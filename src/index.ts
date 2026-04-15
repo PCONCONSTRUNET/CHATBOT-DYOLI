@@ -49,16 +49,13 @@ async function connectToWhatsApp() {
             console.log('📱 Escaneie o QR Code abaixo no WhatsApp (Dispositivos Conectados):');
             qrcode.generate(qr, { small: true });
         } else if (qr && phoneNumber && !sock.authState.creds.registered) {
+            const cleanedNumber = phoneNumber.replace(/\D/g, '');
+            console.log(`📡 Tentando gerar código para o número: ${cleanedNumber}`);
             try {
-                const code = await sock.requestPairingCode(phoneNumber.replace(/\D/g, ''));
+                const code = await sock.requestPairingCode(cleanedNumber);
                 console.log('--------------------------------------------------');
                 console.log(`🔑 SEU CÓDIGO DE ACESSO: ${code}`);
                 console.log('--------------------------------------------------');
-                console.log('No seu WhatsApp:');
-                console.log('1. Vá em Dispositivos Conectados');
-                console.log('2. Clique em Conectar um Dispositivo');
-                console.log('3. Clique em "Conectar com número de telefone"');
-                console.log('4. Digite o código acima');
             } catch (err) {
                 console.error('Erro ao gerar código de pareamento:', err);
             }
