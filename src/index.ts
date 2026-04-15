@@ -10,6 +10,7 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import qrcode from 'qrcode-terminal';
+import QRCode from 'qrcode';
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
@@ -27,13 +28,15 @@ app.get('/', async (req, res) => {
     }
     
     try {
-        const QRCode = require('qrcode');
         const qrImage = await QRCode.toDataURL(latestQR);
         res.send(`
-            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif;">
-                <h1>Escaneie o QR Code abaixo:</h1>
-                <img src="${qrImage}" style="width: 300px; height: 300px; border: 10px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.1);" />
-                <p>O bot será conectado automaticamente após o escaneamento.</p>
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; background-color: #f0f2f5;">
+                <div style="background: white; padding: 20px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center;">
+                    <h1 style="color: #128c7e;">Conectar WhatsApp</h1>
+                    <p style="color: #666;">Aponte seu celular para o código abaixo:</p>
+                    <img src="${qrImage}" style="width: 300px; height: 300px; margin: 20px 0;" />
+                    <p style="font-size: 14px; color: #999;">O site atualiza sozinho quando conectar.</p>
+                </div>
                 <script>setTimeout(() => location.reload(), 5000)</script>
             </div>
         `);
