@@ -76,13 +76,17 @@ async function connectToWhatsApp() {
                 const authPath = path.resolve('auth_info_baileys');
                 try {
                     if (fs.existsSync(authPath)) {
-                        fs.rmSync(authPath, { recursive: true, force: true });
+                        // Em vez de apagar a pasta (que é um Volume), apagamos apenas o conteúdo
+                        const files = fs.readdirSync(authPath);
+                        for (const file of files) {
+                            fs.rmSync(path.join(authPath, file), { recursive: true, force: true });
+                        }
                     }
-                    console.log('✅ Limpeza concluída. Reiniciando...');
+                    console.log('✅ Arquivos limpos com sucesso. Reiniciando...');
                 } catch (err) {
-                    console.error('Erro ao limpar pasta:', err);
+                    console.error('Erro ao limpar arquivos:', err);
                 }
-                process.exit(1); // Força o Railway a reiniciar o bot do zero
+                process.exit(1); 
             }
 
             console.log('🔄 Reconectando:', shouldReconnect);
