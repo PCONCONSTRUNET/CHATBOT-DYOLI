@@ -17,8 +17,29 @@ import path from 'path';
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.get('/', (req, res) => {
-    res.send('Bot is running! 🚀');
+// Variável para armazenar o QR Code mais recente
+let latestQR = '';
+
+app.get('/', async (req, res) => {
+    if (!latestQR) {
+        res.send('<h1>Aguardando QR Code...</h1><p>Se o bot já estiver conectado, você verá uma mensagem aqui em breve.</p><script>setTimeout(() => location.reload(), 2000)</script>');
+        return;
+    }
+    
+    try {
+        const QRCode = require('qrcode');
+        const qrImage = await QRCode.toDataURL(latestQR);
+        res.send(`
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif;">
+                <h1>Escaneie o QR Code abaixo:</h1>
+                <img src="${qrImage}" style="width: 300px; height: 300px; border: 10px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.1);" />
+                <p>O bot será conectado automaticamente após o escaneamento.</p>
+                <script>setTimeout(() => location.reload(), 5000)</script>
+            </div>
+        `);
+    } catch (err) {
+        res.status(500).send('Erro ao gerar imagem do QR Code');
+    }
 });
 
 app.listen(port, () => {
@@ -59,11 +80,13 @@ async function connectToWhatsApp() {
                 console.error('Erro ao gerar código de pareamento:', err);
             }
         } else if (qr && !phoneNumber) {
-            console.log('📱 Escaneie o QR Code abaixo:');
+            latestQR = qr; // Salva para o navegador
+            console.log('📱 QR Code recebido! Acesse o link do Railway para escanear visualmente.');
             qrcode.generate(qr, { small: true });
         }
 
         if (connection === 'close') {
+            latestQR = ''; // Limpa ao fechar
             const error = lastDisconnect?.error as Boom;
             const statusCode = error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
