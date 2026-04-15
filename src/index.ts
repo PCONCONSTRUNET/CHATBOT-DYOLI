@@ -45,25 +45,19 @@ async function connectToWhatsApp() {
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
 
-        const phoneNumber = process.env.PHONE_NUMBER;
-        
-        if (qr) {
-            if (!phoneNumber) {
-                console.log('📱 Escaneie o QR Code abaixo no WhatsApp (Dispositivos Conectados):');
-                qrcode.generate(qr, { small: true });
-            } else {
-                const cleanedNumber = phoneNumber.replace(/\D/g, '');
-                console.log(`📡 Tentando gerar código para o número: ${cleanedNumber}`);
-                try {
-                    const code = await sock.requestPairingCode(cleanedNumber);
-                    console.log('--------------------------------------------------');
-                    console.log(`🔑 SEU CÓDIGO DE ACESSO: ${code}`);
-                    console.log('--------------------------------------------------');
-                } catch (err) {
-                    console.error('Erro ao gerar código de pareamento:', err);
-                }
+        if (qr && phoneNumber && !sock.authState.creds.registered) {
+            const cleanedNumber = phoneNumber.replace(/\D/g, '');
+            console.log(`📡 Gerando código para: ${cleanedNumber} (Aguardando 5s...)`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            try {
+                const code = await sock.requestPairingCode(cleanedNumber);
+                console.log('--------------------------------------------------');
+                console.log(`🔑 SEU CÓDIGO DE ACESSO: ${code}`);
+                console.log('--------------------------------------------------');
+            } catch (err) {
+                console.error('Erro ao gerar código de pareamento:', err);
             }
-        }
+        } else if (qr && !phoneNumber) {
 
         if (connection === 'close') {
             const error = lastDisconnect?.error as Boom;
