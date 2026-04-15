@@ -38,8 +38,8 @@ async function connectToWhatsApp() {
         auth: state,
         // Silenciando os logs gigantescos
         logger: pino({ level: 'silent' }) as any,
-        // Evita bloqueio do WhatsApp ('Status 405') mascarando como um navegador real
-        browser: Browsers.macOS('Desktop'),
+        // Mudando a identidade para Ubuntu/Chrome para melhorar o pareamento
+        browser: ['Ubuntu', 'Chrome', '20.0.04'],
     });
 
     sock.ev.on('connection.update', async (update) => {
