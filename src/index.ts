@@ -72,11 +72,17 @@ async function connectToWhatsApp() {
             console.log('🛑 Conexão fechada. Erro:', error?.message || 'Sem mensagem', 'Status:', statusCode);
             
             if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
-                console.log('🧹 Limpando arquivos de sessão corrompidos...');
+                console.log('🧹 Limpando arquivos de sessão corrompidos e reiniciando...');
                 const authPath = path.resolve('auth_info_baileys');
-                if (fs.existsSync(authPath)) {
-                    fs.rmSync(authPath, { recursive: true, force: true });
+                try {
+                    if (fs.existsSync(authPath)) {
+                        fs.rmSync(authPath, { recursive: true, force: true });
+                    }
+                    console.log('✅ Limpeza concluída. Reiniciando...');
+                } catch (err) {
+                    console.error('Erro ao limpar pasta:', err);
                 }
+                process.exit(1); // Força o Railway a reiniciar o bot do zero
             }
 
             console.log('🔄 Reconectando:', shouldReconnect);
