@@ -44,6 +44,7 @@ async function connectToWhatsApp() {
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
+        const phoneNumber = process.env.PHONE_NUMBER;
 
         if (qr && phoneNumber && !sock.authState.creds.registered) {
             const cleanedNumber = phoneNumber.replace(/\D/g, '');
@@ -58,6 +59,9 @@ async function connectToWhatsApp() {
                 console.error('Erro ao gerar código de pareamento:', err);
             }
         } else if (qr && !phoneNumber) {
+            console.log('📱 Escaneie o QR Code abaixo:');
+            qrcode.generate(qr, { small: true });
+        }
 
         if (connection === 'close') {
             const error = lastDisconnect?.error as Boom;
