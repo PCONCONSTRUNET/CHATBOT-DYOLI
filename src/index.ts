@@ -11,6 +11,8 @@ import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import qrcode from 'qrcode-terminal';
 import express from 'express';
+import fs from 'fs';
+import path from 'path';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -68,11 +70,20 @@ async function connectToWhatsApp() {
             const statusCode = error?.output?.statusCode;
             const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
             console.log('🛑 Conexão fechada. Erro:', error?.message || 'Sem mensagem', 'Status:', statusCode);
+            
+            if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
+                console.log('🧹 Limpando arquivos de sessão corrompidos...');
+                const authPath = path.resolve('auth_info_baileys');
+                if (fs.existsSync(authPath)) {
+                    fs.rmSync(authPath, { recursive: true, force: true });
+                }
+            }
+
             console.log('🔄 Reconectando:', shouldReconnect);
             if (shouldReconnect) {
-                connectToWhatsApp();
+                setTimeout(connectToWhatsApp, 3000);
             } else {
-                console.log('❌ Você foi desconectado. Apague a pasta "auth_info_baileys" e escaneie o QR Code novamente.');
+                console.log('❌ Você foi desconectado permanentemente. Verifique seu número e tente novamente.');
             }
         } else if (connection === 'open') {
             console.log('✅ Bot conectado com sucesso e pronto para responder!');
