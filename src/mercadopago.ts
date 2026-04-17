@@ -4,7 +4,7 @@ import 'dotenv/config';
 const client = new MercadoPagoConfig({ accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN || '' });
 
 // Create a PIX payment directly
-export const criarPagamentoPix = async (valor: number, email: string, descricao: string) => {
+export const criarPagamentoPix = async (valor: number, email: string, descricao: string, external_reference?: string) => {
     const payment = new Payment(client);
     try {
         const resposta = await payment.create({
@@ -12,6 +12,7 @@ export const criarPagamentoPix = async (valor: number, email: string, descricao:
                 transaction_amount: Number(valor),
                 description: descricao,
                 payment_method_id: 'pix',
+                external_reference: external_reference, // Usado para salvar o numero do wpp
                 payer: {
                     email: email,
                 }
@@ -31,11 +32,12 @@ export const criarPagamentoPix = async (valor: number, email: string, descricao:
 };
 
 // Create a Checkout link for Credit Card
-export const criarLinkCartao = async (valor: number, titulo: string) => {
+export const criarLinkCartao = async (valor: number, titulo: string, external_reference?: string) => {
     const preference = new Preference(client);
     try {
         const resposta = await preference.create({
             body: {
+                external_reference: external_reference,
                 items: [
                     {
                         id: 'ass',
@@ -60,6 +62,16 @@ export const criarLinkCartao = async (valor: number, titulo: string) => {
         };
     } catch (error) {
         console.error("Erro ao criar link de cartao:", error);
+        throw error;
+    }
+};
+
+export const consultarPagamento = async (id: number | string) => {
+    const payment = new Payment(client);
+    try {
+        return await payment.get({ id: Number(id) });
+    } catch (error) {
+        console.error("Erro ao consultar pagamento:", error);
         throw error;
     }
 };

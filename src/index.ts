@@ -48,10 +48,37 @@ app.get('/', async (req, res) => {
     }
 });
 
+let globalSock: any = null;
+app.use(express.json());
+
+app.post('/webhook/mercadopago', async (req, res) => {
+    try {
+        const payload = req.body;
+        // Identifica chamadas referentes a pagamentos
+        const idPagamento = payload.data?.id || req.query?.['data.id'];
+        
+        if (idPagamento) {
+            const { consultarPagamento } = await import('./mercadopago.js');
+            const pago = await consultarPagamento(idPagamento);
+            
+            if (pago.status === 'approved' && pago.external_reference) {
+                // Recupera o contato pelo reference
+                if (globalSock) {
+                   const tel = pago.external_reference.includes('@') ? pago.external_reference : `${pago.external_reference}@s.whatsapp.net`;
+                   await globalSock.sendMessage(tel, { text: `✅ *Recebemos o Pagamento!* 🎉\n\nIdentificamos o pagamento de R$ ${pago.transaction_amount} do seu Pix/Cartão.\nSua reserva está 100% garantida. Muito obrigado!` });
+                }
+            }
+        }
+        res.sendStatus(200);
+    } catch(err) {
+        console.error('Erro no Webhook MP:', err);
+        res.sendStatus(500);
+    }
+});
+
 app.listen(port, () => {
     console.log(`[HealthCheck] Servidor ouvindo na porta ${port}`);
 });
-
 
 async function connectToWhatsApp() {
     // Salva o estado da autenticação (credenciais) em uma pasta local
@@ -68,6 +95,8 @@ async function connectToWhatsApp() {
         // Mudando a identidade para Ubuntu/Chrome para melhorar o pareamento
         browser: ['Ubuntu', 'Chrome', '20.0.04'],
     });
+
+    globalSock = sock;
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
