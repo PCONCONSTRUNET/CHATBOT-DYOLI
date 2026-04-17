@@ -14,6 +14,7 @@ import QRCode from 'qrcode';
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
+import { lovable } from './lovable';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -173,7 +174,7 @@ async function connectToWhatsApp() {
         try {
             // Se estiver no início ou resetado, enviamos o Menu Principal
             if (currentState === 'START') {
-                const welcomeText = `Fala! 👋 Eu sou o *Conny*, assistente aqui da equipe.\n\nVou te ajudar rapidinho, me diz o que você precisa:\n\n1️⃣ Fazer orçamento\n2️⃣ Nossos planos\n3️⃣ Consultar fatura\n4️⃣ Já sou cliente (suporte)\n5️⃣ Falar com especialista\n\n_Por favor, digite apenas o número da opção desejada._`;
+                const welcomeText = `Olá! 👋 Bem-vindo ao nosso Salão.\n\nComo posso te ajudar hoje?\n\n1️⃣ Agendar pelo site\n2️⃣ Agendar por aqui\n3️⃣ Meus agendamentos\n4️⃣ Falar com atendente\n\n_Digite apenas o número da opção desejada._`;
                 
                 await sendMsg(remoteJid, { text: welcomeText });
                 userState[stateKey] = 'MENU';
@@ -182,108 +183,188 @@ async function connectToWhatsApp() {
                 // Checa qual número o usuário digitou
                 switch (incomingMessage.trim()) {
                     case '1':
-                        await sendMsg(remoteJid, { text: `📝 *Fazer Orçamento*\n\nLegal! Para agilizar seu orçamento, por favor me conte brevemente o que você precisa ou qual serviço tem interesse.` });
+                        await sendMsg(remoteJid, { text: `Ótimo! Você pode ver todos os horários livres e agendar rapidinho pelo nosso site:\n\n🔗 *[COLOQUE AQUI O LINK DO SEU SITE LOVABLE]*\n\nQualquer dúvida, é só chamar a gente aqui!` });
+                        userState[stateKey] = 'START';
                         break;
 
                     case '2':
-                        const planosText = `📦 *NOSSOS PLANOS P-CON*\n\nTemos a solução ideal para o seu negócio:\n\n` +
-                                         `🔹 *P-CON BARBER ONE*\n` +
-                                         `🔹 *P-CON NAILS ONE*\n` +
-                                         `🔹 *P-CON CONTROL ONE*\n` +
-                                         `🔹 *P-CON AUTO ONE*\n` +
-                                         `🔹 *P-CON MOTO ONE*\n` +
-                                         `🔹 *P-CON WEB ONE*\n` +
-                                         `🔹 *P-CON SAAS ONE*\n` +
-                                         `🔹 *P-CON STORE ONE*\n` +
-                                         `🔹 *P-CON SOB MEDIDA*\n\n` +
-                                         `👉 Digite *0* para voltar ao menu ou nos chame no suporte (opção 4) para detalhes de preços!`;
-                        await sendMsg(remoteJid, { text: planosText });
+                        await sendMsg(remoteJid, { text: `Buscando nossos serviços disponíveis... 🔎` });
+                        try {
+                            const res = await lovable.listarServicos();
+                            // Se a API retornar um array direto ou um objeto { success: true, data: [...] }
+                            const servicos = Array.isArray(res) ? res : (res.data || res.servicos || []);
+                            
+                            if (servicos.length === 0) {
+                                await sendMsg(remoteJid, { text: `Parece que não temos serviços cadastrados no momento. Tente de novo mais tarde. 😢` });
+                                userState[stateKey] = 'START';
+                            } else {
+                                let msg = `Temos esses serviços maravilhosos! Qual você deseja?\n\n`;
+                                servicos.forEach((srv: any, i: number) => {
+                                    const nome = srv.nome || srv.name || srv.title || 'Serviço';
+                                    const preco = srv.preco || srv.price ? `- R$ ${srv.preco || srv.price}` : '';
+                                    msg += `${i + 1}️⃣ *${nome}* ${preco}\n`;
+                                });
+                                msg += `\n_Digite o número do serviço ou *0* para voltar._`;
+                                
+                                userState[stateKey] = { state: 'WAITING_SERVICE', servicos };
+                                await sendMsg(remoteJid, { text: msg });
+                            }
+                        } catch (err: any) {
+                             console.error('Erro ao listar serviços:', err.message);
+                             await sendMsg(remoteJid, { text: `Desculpe, o nosso sistema de agendamento está offline no momento. 🔧` });
+                             userState[stateKey] = 'START';
+                        }
                         break;
 
                     case '3':
-                        await sendMsg(remoteJid, { text: `📄 *Consultar Fatura*\n\nPara consultar sua fatura, por favor informe o seu CPF/CNPJ (apenas números):` });
-                        userState[stateKey] = 'WAITING_CPF';
+                        await sendMsg(remoteJid, { text: `🔎 Consultando seus agendamentos...` });
+                        try {
+                            // Pega o número do cliente que vem pelo JID (ex: 5511999999999)
+                            const clientPhone = remoteJid.replace(/\D/g, '');
+                            const res = await lovable.meusAgendamentos(clientPhone);
+                            const agendamentos = Array.isArray(res) ? res : (res.data || res.agendamentos || []);
+                            
+                            if (agendamentos.length === 0) {
+                                await sendMsg(remoteJid, { text: `Você não tem nenhum agendamento pendente no momento! 📅` });
+                            } else {
+                                let msg = `*Suas próximas visitas:*\n\n`;
+                                agendamentos.forEach((ag: any, index: number) => {
+                                    const dataFormatada = ag.data || ag.date || 'Data a confirmar';
+                                    const hora = ag.horario || ag.time || 'Hora a confirmar';
+                                    const nomeServ = ag.servico?.nome || ag.servico || 'Procedimento';
+                                    
+                                    msg += `📌 *${nomeServ}*\n📅 ${dataFormatada} às ${hora}\nStatus: ${ag.status}\n\n`;
+                                });
+                                await sendMsg(remoteJid, { text: msg });
+                            }
+                            userState[stateKey] = 'START';
+                        } catch (err: any) {
+                            console.error('Erro meus agendamentos:', err.message);
+                            await sendMsg(remoteJid, { text: `Não consegui puxar seus agendamentos agora. 😕` });
+                            userState[stateKey] = 'START';
+                        }
                         break;
 
                     case '4':
-                        await sendMsg(remoteJid, { text: `🎧 *Suporte ao Cliente*\n\nOlá! Em que podemos ajudar hoje? Descreva o seu problema ou dúvida que já vamos te atender.` });
-                        userState[stateKey] = 'WAITING_HUMAN';
-                        break;
-
-                    case '5':
-                        await sendMsg(remoteJid, { text: `👨‍💼 *Falar com Especialista*\n\nUm de nossos especialistas já vai entrar em contato com você. Por favor, aguarde um momento.` });
+                        await sendMsg(remoteJid, { text: `🎧 *Atendimento Humano*\n\nUm de nossos profissionais já vai falar com você. Por favor, aguarde só um momento.` });
                         userState[stateKey] = 'WAITING_HUMAN';
                         break;
 
                     case '0':
                         userState[stateKey] = 'START';
-                        await sendMsg(remoteJid, { text: `🔄 *Retornando ao menu principal...*` });
+                        await sendMsg(remoteJid, { text: `🔄 *Retornando...*` });
                         break;
 
                     default:
-                        await sendMsg(remoteJid, { text: `⚠️ *Opção Inválida*\n\nPor favor, escolha uma das opções do menu (*1, 2, 3, 4* ou *5*).` });
+                        await sendMsg(remoteJid, { text: `⚠️ *Opção Inválida*\n\nPor favor, escolha uma das opções do menu (*1, 2, 3* ou *4*).` });
                         break;
                 }
             }
-            else if (currentState === 'WAITING_CPF') {
+            else if (currentState === 'WAITING_SERVICE') {
                 if (incomingMessage.trim() === '0') {
                     userState[stateKey] = 'START';
-                    await sendMsg(remoteJid, { text: `Busca cancelada. Retornando ao menu principal...\n\n(Envie "Olá" para reabrir o menu)` });
+                    await sendMsg(remoteJid, { text: `Cancelado. Retornando ao início...` });
                 } else {
-                    const cpfOrCnpj = incomingMessage.replace(/\D/g, ''); // Remove pontuação, deixa apenas os números
-                    
-                    if (cpfOrCnpj.length !== 11 && cpfOrCnpj.length !== 14) {
-                        await sendMsg(remoteJid, { text: `Ops, isso não parece ser um documento válido de 11 ou 14 dígitos.\n\nPor favor, digite novamente apenas os números, ou envie *0* para cancelar e voltar.` });
+                    const servicosList = rawState.servicos;
+                    const index = parseInt(incomingMessage.trim()) - 1;
+
+                    if (isNaN(index) || index < 0 || index >= servicosList.length) {
+                        await sendMsg(remoteJid, { text: `Opção inválida! Digite o número correspondente de 1 a ${servicosList.length}, ou 0 para voltar.` });
                     } else {
-                        await sendMsg(remoteJid, { text: `🔎 *Buscando faturas...*\n\nLocalizando registros para o documento *${cpfOrCnpj}*. Só um momento...` });
-                        
-                        if (!supabase) {
-                            await sendMsg(remoteJid, { text: `❌ Erro de configuração no servidor. Por favor, tente mais tarde.` });
-                            userState[stateKey] = 'START';
-                            return;
-                        }
+                        const servicoEscolhido = servicosList[index];
+                        const servId = servicoEscolhido.id;
+                        const servNome = servicoEscolhido.nome || servicoEscolhido.name || 'este serviço';
 
-                        // 1. Busca o cliente pelo documento (CPF/CNPJ)
-                        const { data: client, error: clientErr } = await (supabase as any)
-                            .from('clients')
-                            .select('id, name, email')
-                            .eq('document', cpfOrCnpj)
-                            .single();
-
-                        if (clientErr || !client) {
-                            await sendMsg(remoteJid, { text: `❌ *Documento não encontrado*\n\nNão localizamos nenhum cliente com o documento *${cpfOrCnpj}* em nossa base.\n\nPor favor, verifique o número ou fale com nosso suporte (Opção 5).` });
-                            userState[stateKey] = 'START';
-                        } else {
-                            // 2. Busca as faturas pendentes desse cliente
-                            const { data: invoices, error: invErr } = await (supabase as any)
-                                .from('invoices')
-                                .select('*')
-                                .eq('client_id', client.id)
-                                .neq('status', 'paid') 
-                                .neq('status', 'approved')
-                                .neq('status', 'pago')
-                                .order('issued_at', { ascending: false });
-
-                            if (invErr || !invoices || invoices.length === 0) {
-                                await sendMsg(remoteJid, { text: `💎 *Olá, ${client.name}!*\n\nNão encontramos faturas pendentes para o seu documento no momento. Seu cadastro está em dia! 😎` });
-                                userState[stateKey] = 'START';
-                            } else {
-                                let invoiceText = `🟦 *Faturas Localizadas - ${client.name}*\n\nEncontrei as seguintes pendências:\n\n`;
-                                
-                                invoices.forEach((inv: any, index: number) => {
-                                    const valor = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(inv.amount);
-                                    const data = inv.issued_at ? new Date(inv.issued_at).toLocaleDateString('pt-BR') : 'N/A';
-                                    invoiceText += `📄 *Fatura #${inv.number || (index + 1)}*\n📅 Data: ${data}\n💰 Valor: ${valor}\n📝 Status: ${inv.status}\n\n`;
-                                });
-
-                                invoiceText += `_Para mais detalhes ou para realizar o pagamento, entre em contato com nosso suporte._\n\n👉 Digite *0* para voltar ao menu principal.`;
-                                
-                                await sendMsg(remoteJid, { text: invoiceText });
-                                userState[stateKey] = 'START'; // Volta para o início após exibir
-                            }
-                        }
+                        await sendMsg(remoteJid, { text: `Você selecionou *${servNome}*.\n\nPara qual data você gostaria? (Digite no formato Dia/Mês. Ex: 25/12)` });
+                        userState[stateKey] = { state: 'WAITING_DATE', servico: servicoEscolhido, id: servId };
                     }
                 }
+            }
+            else if (currentState === 'WAITING_DATE') {
+                if (incomingMessage.trim() === '0') {
+                    userState[stateKey] = 'START';
+                    await sendMsg(remoteJid, { text: `Cancelado. Retornando...` });
+                } else {
+                    // Aqui faremos a ponte simples com a API para ver os horários. 
+                    // No mundo real, precisaríamos validar se é uma data possível e converter para YYYY-MM-DD
+                    const dataUser = incomingMessage.trim(); // "25/12"
+                    
+                    // Lógica básica para YYYY-MM-DD
+                    let dateIso = "";
+                    try {
+                        const parts = dataUser.split('/');
+                        const currentYear = new Date().getFullYear();
+                        if (parts.length >= 2) {
+                            dateIso = `${currentYear}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                        } else {
+                            dateIso = `${currentYear}-12-01`; // Placeholder se digitou errado
+                        }
+                    } catch { dateIso = "2024-01-01"; }
+
+                    await sendMsg(remoteJid, { text: `Checando a agenda para ${dataUser}... 📅` });
+                    
+                    try {
+                        const res = await lovable.horariosDisponiveis(rawState.id, dateIso);
+                        const horarios = Array.isArray(res) ? res : (res.data || res.horarios || ['09:00', '10:00', '14:00', '16:00']);
+
+                        if (horarios.length === 0) {
+                            await sendMsg(remoteJid, { text: `Poxa, não temos mais horários vagos neste dia. Digite outra data, ou *0* para desistir.` });
+                        } else {
+                            let msg = `Horários disponíveis:\n\n`;
+                            horarios.forEach((hr: any, i: number) => {
+                                msg += `${i + 1}️⃣ ${hr.horario || hr}\n`;
+                            });
+                            msg += `\nQual horário prefere? (Digite o número)`;
+                            userState[stateKey] = { state: 'WAITING_TIME', id: rawState.id, servico: rawState.servico, data: dataUser, dateIso, horarios };
+                            await sendMsg(remoteJid, { text: msg });
+                        }
+                    } catch (e: any) {
+                        console.error('Erro na data', e.message);
+                        userState[stateKey] = 'START';
+                        await sendMsg(remoteJid, { text: `Tivemos um problema com esse dia específico. Pode tentar de novo ou agendar pelo site (opção 1).` });
+                    }
+                }
+            }
+            else if (currentState === 'WAITING_TIME') {
+                 if (incomingMessage.trim() === '0') {
+                    userState[stateKey] = 'START';
+                    await sendMsg(remoteJid, { text: `Cancelado.` });
+                } else {
+                    const idx = parseInt(incomingMessage.trim()) - 1;
+                    const horariosList = rawState.horarios;
+                    if (isNaN(idx) || idx < 0 || idx >= horariosList.length) {
+                        await sendMsg(remoteJid, { text: `Número inválido.` });
+                    } else {
+                        const hrObj = horariosList[idx];
+                        const horaEscolhida = hrObj.horario || hrObj;
+                        
+                        await sendMsg(remoteJid, { text: `Legal! Para confirmar o agendamento no dia *${rawState.data} às ${horaEscolhida}*, como você se chama? (Nome e Sobrenome)` });
+                        userState[stateKey] = { ...rawState, state: 'WAITING_NAME', horaEscolhida };
+                    }
+                }
+            }
+            else if (currentState === 'WAITING_NAME') {
+                const nomeCliente = incomingMessage.trim();
+                const clientPhone = remoteJid.replace(/\D/g, ''); // Telefone Whatsapp do cara
+
+                await sendMsg(remoteJid, { text: `Registrando seu agendamento no sistema, ${nomeCliente}... ⏳` });
+
+                try {
+                    await lovable.agendar({
+                        whatsapp: clientPhone,
+                        nome: nomeCliente,
+                        servico_id: rawState.id,
+                        data: rawState.dateIso,
+                        horario: rawState.horaEscolhida
+                    });
+
+                    await sendMsg(remoteJid, { text: `✅ *Agendamento Confirmado!* 🎉\n\nEstá tudo certo para o dia *${rawState.data} às ${rawState.horaEscolhida}*.\nTe esperamos lá! ❤️` });
+                } catch (err: any) {
+                    console.error('Erro Agendar', err);
+                    await sendMsg(remoteJid, { text: `Poxa, deu erro na hora de confirmar ${err.message || ''}. 😭\nPor favor chame um atendente.` });
+                }
+
+                userState[stateKey] = 'START';
             }
             else if (currentState === 'WAITING_HUMAN') {
                 // Aqui podemos criar lógicas caso o usuário queira desistir de aguardar e voltar ao robô
