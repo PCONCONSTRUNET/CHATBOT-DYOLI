@@ -204,7 +204,8 @@ async function connectToWhatsApp() {
                                 servicos.forEach((srv: any, i: number) => {
                                     const nome = srv.nome || srv.name || srv.title || 'Serviço';
                                     const preco = srv.preco || srv.price ? `- R$ ${srv.preco || srv.price}` : '';
-                                    msg += `${i + 1}️⃣ *${nome}* ${preco}\n`;
+                                    const numStr = String(i + 1).padStart(2, '0');
+                                    msg += `*${numStr}.* ${nome} ${preco}\n`;
                                 });
                                 msg += `\n_Digite o número do serviço ou *0* para voltar._`;
                                 
@@ -328,9 +329,10 @@ async function connectToWhatsApp() {
                         if (horarios.length === 0) {
                             await sendMsg(remoteJid, { text: `Poxa, não temos mais horários vagos neste dia e serviço. Digite outra data, ou *0* para voltar.` });
                         } else {
-                            let msg = `Horários disponíveis:\n\n`;
+                            let msg = `📅 *Horários disponíveis para ${dataUser}:*\n\n`;
                             horarios.forEach((hr: any, i: number) => {
-                                msg += `${i + 1}️⃣ ${hr.horario || hr}\n`;
+                                const numStr = String(i + 1).padStart(2, '0');
+                                msg += `*${numStr}.* ${hr.horario || hr}\n`;
                             });
                             msg += `\nQual horário prefere? (Digite o número)`;
                             userState[stateKey] = { state: 'WAITING_TIME', id: rawState.id, servico: rawState.servico, data: dataUser, dateIso, horarios };
