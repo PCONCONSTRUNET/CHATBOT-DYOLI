@@ -320,8 +320,9 @@ async function connectToWhatsApp() {
                         }
                     } catch (e: any) {
                         console.error('Erro na data', e.message);
+                        console.log('Dados enviados:', { id: rawState.id, dateIso, dataUser });
                         userState[stateKey] = 'START';
-                        await sendMsg(remoteJid, { text: `Tivemos um problema com esse dia específico. Pode tentar de novo ou agendar pelo site (opção 1).` });
+                        await sendMsg(remoteJid, { text: `Falha ao buscar horários! Servidor Lovable respondeu: *${e.message}*\n_ID do serviço procurado:_ ${rawState.id}\n\nTente de novo ou agende pelo site (opção 1).` });
                     }
                 }
             }
