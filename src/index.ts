@@ -305,10 +305,22 @@ async function connectToWhatsApp() {
                     
                     try {
                         const res = await lovable.horariosDisponiveis(rawState.id, dateIso);
-                        const horarios = Array.isArray(res) ? res : (res.data || res.horarios || ['09:00', '10:00', '14:00', '16:00']);
+                        
+                        // Tenta extrair a lista que pode estar em res.data, res.horarios, res.slots...
+                        let horarios = Array.isArray(res) ? res : (res.data || res.horarios || res.slots || ['09:00', '10:00', '14:00', '16:00']);
+
+                        // Se a resposta ainda não for um array (ex: veio um objeto ou null), forçamos para evitar o crash "is not a function"
+                        if (!Array.isArray(horarios)) {
+                            if (typeof horarios === 'object' && horarios !== null) {
+                                // Se veio um objeto com os horários dentro das chaves, transformamos em array
+                                horarios = Object.values(horarios);
+                            } else {
+                                horarios = [];
+                            }
+                        }
 
                         if (horarios.length === 0) {
-                            await sendMsg(remoteJid, { text: `Poxa, não temos mais horários vagos neste dia. Digite outra data, ou *0* para desistir.` });
+                            await sendMsg(remoteJid, { text: `Poxa, não temos mais horários vagos neste dia e serviço. Digite outra data, ou *0* para voltar.` });
                         } else {
                             let msg = `Horários disponíveis:\n\n`;
                             horarios.forEach((hr: any, i: number) => {
