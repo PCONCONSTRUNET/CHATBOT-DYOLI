@@ -76,6 +76,30 @@ app.post('/webhook/mercadopago', async (req, res) => {
     }
 });
 
+app.post('/webhook/misticpay', async (req, res) => {
+    try {
+        const payload = req.body;
+        console.log("🔔 [MisticPay] Webhook Recebido:", JSON.stringify(payload, null, 2));
+
+        // Vamos procurar na raiz do payload os campos comuns de operadoras padrão
+        const status = payload.status || payload.state || payload.pagamento_status;
+        const external_reference = payload.external_reference || payload.reference || payload.id_externo || payload.metadata?.whatsapp;
+        const valor = payload.value || payload.amount || payload.valor;
+
+        if ((status === 'approved' || status === 'paid' || status === 'PAID') && external_reference) {
+            if (globalSock) {
+                const tel = external_reference.includes('@') ? external_reference : `${external_reference}@s.whatsapp.net`;
+                await globalSock.sendMessage(tel, { text: `✅ *Recebemos o Pagamento via Mistic Pay!* 🎉\n\nPagamento aprovado. Sua reserva está 100% confirmada. Muito obrigado!` });
+            }
+        }
+
+        res.sendStatus(200);
+    } catch(err) {
+        console.error('Erro no Webhook MisticPay:', err);
+        res.sendStatus(500);
+    }
+});
+
 app.listen(port, () => {
     console.log(`[HealthCheck] Servidor ouvindo na porta ${port}`);
 });
