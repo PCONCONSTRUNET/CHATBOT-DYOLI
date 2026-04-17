@@ -10,11 +10,12 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import qrcode from 'qrcode-terminal';
+// @ts-ignore
 import QRCode from 'qrcode';
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { lovable } from './lovable';
+import { lovable } from './lovable.js';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -295,7 +296,7 @@ async function connectToWhatsApp() {
                         const parts = dataUser.split('/');
                         const currentYear = new Date().getFullYear();
                         if (parts.length >= 2) {
-                            dateIso = `${currentYear}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                            dateIso = `${currentYear}-${(parts[1] as string).padStart(2, '0')}-${(parts[0] as string).padStart(2, '0')}`;
                         } else {
                             dateIso = `${currentYear}-12-01`; // Placeholder se digitou errado
                         }
@@ -306,8 +307,12 @@ async function connectToWhatsApp() {
                     try {
                         const res = await lovable.horariosDisponiveis(rawState.id, dateIso);
                         
-                        // Tenta extrair a lista que pode estar em res.data, res.horarios, res.slots...
-                        let horarios = Array.isArray(res) ? res : (res.data || res.horarios || res.slots || ['09:00', '10:00', '14:00', '16:00']);
+                        // Extrai a lista que pode estar em res.horarios_disponiveis, ou arrays genéricos
+                        let horarios = Array.isArray(res) ? res : (res.horarios_disponiveis || res.horarios || res.slots);
+                        
+                        if (!horarios && Array.isArray(res.data)) {
+                            horarios = res.data;
+                        }
 
                         // Se a resposta ainda não for um array (ex: veio um objeto ou null), forçamos para evitar o crash "is not a function"
                         if (!Array.isArray(horarios)) {
