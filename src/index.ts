@@ -154,6 +154,9 @@ async function connectToWhatsApp() {
         const remoteJid = msg.key?.remoteJid;
         if (!remoteJid) return;
 
+        // Ignora mensagens originadas de Grupos (JID termina com @g.us)
+        if (remoteJid.endsWith('@g.us')) return;
+
         // Extrai o texto da mensagem de várias fontes possíveis (texto simples, mensagem estendida, legenda de imagem/vídeo)
         const incomingMessage = 
             msg.message?.conversation || 
