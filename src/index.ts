@@ -17,6 +17,7 @@ import fs from 'fs';
 import path from 'path';
 import { lovable } from './lovable.js';
 import { criarPagamentoPix, criarLinkCartao } from './mercadopago.js';
+import { criarPagamentoPixMistic } from './misticpay.js';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -81,16 +82,24 @@ app.post('/webhook/misticpay', async (req, res) => {
         const payload = req.body;
         console.log("🔔 [MisticPay] Webhook Recebido:", JSON.stringify(payload, null, 2));
 
-        // Vamos procurar na raiz do payload os campos comuns de operadoras padrão
-        const status = payload.status || payload.state || payload.pagamento_status;
-        const external_reference = payload.external_reference || payload.reference || payload.id_externo || payload.metadata?.whatsapp;
-        const valor = payload.value || payload.amount || payload.valor;
+        // Conforme docs da Mistic Pay:
+        // payload.status = 'COMPLETO' | 'PENDENTE' | 'FALHA'
+        // payload.transactionId = o ID que enviamos na criação (usamos o número do WhatsApp)
+        const status = payload.status;
+        const transactionId: string = String(payload.transactionId || ''); // ex: 5511999998888
+        const valor = (payload.value || 0) / 100; // Mistic envia em centavos
 
-        if ((status === 'approved' || status === 'paid' || status === 'PAID') && external_reference) {
+        if (status === 'COMPLETO' && transactionId) {
             if (globalSock) {
-                const tel = external_reference.includes('@') ? external_reference : `${external_reference}@s.whatsapp.net`;
-                await globalSock.sendMessage(tel, { text: `✅ *Recebemos o Pagamento via Mistic Pay!* 🎉\n\nPagamento aprovado. Sua reserva está 100% confirmada. Muito obrigado!` });
+                // O transactionId é o numero do WhatsApp sem formatação que enviamos como ID
+                const tel = transactionId.includes('@') ? transactionId : `${transactionId}@s.whatsapp.net`;
+                await globalSock.sendMessage(tel, {
+                    text: `✅ *Pagamento Confirmado!* 🎉\n\nRecebemos o seu PIX de R$ ${valor.toFixed(2)}. Sua reserva está 100% garantida!\n\nAté breve no salão! 💅`
+                });
+                console.log(`[MisticPay] ✅ Pagamento confirmado. Mensagem enviada para ${tel}`);
             }
+        } else if (status === 'FALHA') {
+            console.log(`[MisticPay] ❌ Pagamento falhou para transação ${transactionId}`);
         }
 
         res.sendStatus(200);
@@ -467,24 +476,36 @@ async function connectToWhatsApp() {
                     await sendMsg(remoteJid, { text: `Cancelado.` });
                 }
                 else if (opcao === '1' || opcao === '2') {
-                    await sendMsg(remoteJid, { text: `Gerando ${opcao === '1' ? 'o código PIX Copia e Cola' : 'o link de pagamento seguro'}... ⏳` });
+                    await sendMsg(remoteJid, { text: `⏳ Gerando ${opcao === '1' ? 'o código PIX Copia e Cola' : 'o link de pagamento seguro'}...` });
                     
                     try {
                         const precoOriginal = rawState.servico?.preco || 1;
                         const nomeServico = rawState.servico?.nome || 'Serviço';
+                        // Número limpo do WhatsApp (ex: 5511999998888) — usado como transactionId
+                        // para identificar o cliente no Webhook da Mistic Pay
+                        const phoneNum = clientPhone.replace(/\D/g, '');
+                        const webhookUrl = `https://chatbot-pcon-production.up.railway.app/webhook/misticpay`;
                         
                         let txtPagamento = '';
                         if (opcao === '1') {
-                            const pix = await criarPagamentoPix(precoOriginal, `${clientPhone}@pagamento.whatsapp.com`, `Pagamento ${nomeServico}`);
-                            txtPagamento = `Aqui está o código *PIX Copia e Cola* no valor de R$ ${precoOriginal}:\n\n${pix.qr_code}\n\nAssim que fizer o pagamento pelo seu app de banco, mande o comprovante aqui, por favor!`;
+                            // PIX via Mistic Pay
+                            const pix = await criarPagamentoPixMistic({
+                                valor: Number(precoOriginal),
+                                payerName: rawState.nomeCliente || 'Cliente',
+                                payerDocument: '00000000000', // CPF genérico (cliente não informa no bot)
+                                transactionId: phoneNum,      // Usamos o tel como ID para rastrear no Webhook
+                                description: `Agendamento ${nomeServico} - ${rawState.data} ${rawState.horaEscolhida}`,
+                                webhookUrl,
+                            });
+                            txtPagamento = `💰 *PIX Copia e Cola* — R$ ${Number(precoOriginal).toFixed(2)}\n\n\`\`\`${pix.copy_paste}\`\`\`\n\n_Copie o código acima e cole no app do seu banco em "PIX Copia e Cola". Assim que pagar, você receberá a confirmação automaticamente aqui!_ ✅`;
                         } else {
                             const link = await criarLinkCartao(precoOriginal, `Pagamento ${nomeServico}`);
-                            txtPagamento = `Aqui está o link 100% seguro do Mercado Pago para efetuar o pagamento de R$ ${precoOriginal}:\n\n🔗 ${link.init_point}\n\nAssim que finalizar, mande um "Ok" pra gente validar!`;
+                            txtPagamento = `💳 *Link de Pagamento Seguro* — R$ ${Number(precoOriginal).toFixed(2)}\n\n🔗 ${link.init_point}\n\n_Clique no link acima para pagar com cartão de crédito ou débito. Após a confirmação, você receberá um aviso aqui!_ ✅`;
                         }
 
-                        // Registramos como pré-reservado no lovable (status pendente é o default)
+                        // Registramos o agendamento no Lovable (status pendente)
                         await lovable.agendar({
-                            whatsapp: clientPhone,
+                            whatsapp: phoneNum,
                             nome: rawState.nomeCliente,
                             servico_id: rawState.id,
                             data: rawState.dateIso,
@@ -493,11 +514,11 @@ async function connectToWhatsApp() {
                         });
 
                         await sendMsg(remoteJid, { text: txtPagamento });
-                        await sendMsg(remoteJid, { text: `✅ *Vaga Reservada com sucesso!* 🎉\nFicou configurada para *${rawState.data} às ${rawState.horaEscolhida}*.\nSe puder enviar o comprovante assim que pagar, agradecemos! ❤️` });
+                        await sendMsg(remoteJid, { text: `✅ *Vaga Reservada!* 🎉\nAgendado para *${rawState.data} às ${rawState.horaEscolhida}*.\nAssim que o pagamento cair, te avisamos aqui mesmo! ❤️` });
 
                     } catch (err: any) {
                         console.error("Erro Pagamento:", err);
-                        await sendMsg(remoteJid, { text: `Poxa, deu erro na hora de gerar a cobrança pelo Mercado Pago! 😭 Chame um atendente humano para te passar os dados.` });
+                        await sendMsg(remoteJid, { text: `Ops, tive um erro ao gerar a cobrança. 😕\nChame um atendente para te passar os dados manualmente!` });
                     }
                     userState[stateKey] = 'START';
                 }
