@@ -16,6 +16,7 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import { lovable } from './lovable.js';
+import { criarPagamentoPix, criarLinkCartao } from './mercadopago.js';
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -363,26 +364,88 @@ async function connectToWhatsApp() {
             }
             else if (currentState === 'WAITING_NAME') {
                 const nomeCliente = incomingMessage.trim();
-                const clientPhone = remoteJid.replace(/\D/g, ''); // Telefone Whatsapp do cara
+                await sendMsg(remoteJid, { text: `Muito prazer, ${nomeCliente}!\n\nComo você prefere realizar o pagamento?\n\n1️⃣ Pagar por aqui\n2️⃣ Pagar no salão` });
+                userState[stateKey] = { ...rawState, state: 'WAITING_PAYMENT_WHERE', nomeCliente };
+            }
+            else if (currentState === 'WAITING_PAYMENT_WHERE') {
+                const opcao = incomingMessage.trim();
+                const clientPhone = remoteJid.replace(/\D/g, '');
 
-                await sendMsg(remoteJid, { text: `Registrando seu agendamento no sistema, ${nomeCliente}... ⏳` });
+                if (opcao === '2') {
+                    // Finaliza como "pagar no salão"
+                    await sendMsg(remoteJid, { text: `Registrando seu agendamento no sistema, ${rawState.nomeCliente}... ⏳` });
 
-                try {
-                    await lovable.agendar({
-                        whatsapp: clientPhone,
-                        nome: nomeCliente,
-                        servico_id: rawState.id,
-                        data: rawState.dateIso,
-                        horario: rawState.horaEscolhida
-                    });
+                    try {
+                        await lovable.agendar({
+                            whatsapp: clientPhone,
+                            nome: rawState.nomeCliente,
+                            servico_id: rawState.id,
+                            data: rawState.dateIso,
+                            horario: rawState.horaEscolhida,
+                            forma_pagamento: 'salao'
+                        });
 
-                    await sendMsg(remoteJid, { text: `✅ *Agendamento Confirmado!* 🎉\n\nEstá tudo certo para o dia *${rawState.data} às ${rawState.horaEscolhida}*.\nTe esperamos lá! ❤️` });
-                } catch (err: any) {
-                    console.error('Erro Agendar', err);
-                    await sendMsg(remoteJid, { text: `Poxa, deu erro na hora de confirmar ${err.message || ''}. 😭\nPor favor chame um atendente.` });
+                        await sendMsg(remoteJid, { text: `✅ *Agendamento Confirmado!* 🎉\n\nEstá tudo certo para o dia *${rawState.data} às ${rawState.horaEscolhida}*.\nTe esperamos lá! ❤️` });
+                    } catch (err: any) {
+                        console.error('Erro Agendar', err);
+                        await sendMsg(remoteJid, { text: `Poxa, deu erro na hora de confirmar ${err.message || ''}. 😭\nPor favor chame um atendente.` });
+                    }
+                    userState[stateKey] = 'START';
                 }
+                else if (opcao === '1') {
+                    await sendMsg(remoteJid, { text: `Ótimo! Qual forma de pagamento você prefere utilizar?\n\n1️⃣ Via PIX\n2️⃣ Cartão de Crédito/Débito\n\n_Ou digite *0* para cancelar._` });
+                    userState[stateKey] = { ...rawState, state: 'WAITING_PAYMENT_METHOD' };
+                }
+                else {
+                    await sendMsg(remoteJid, { text: `⚠️ Opção inválida.\nDigite 1 para pagar por aqui ou 2 para pagar no salão.` });
+                }
+            }
+            else if (currentState === 'WAITING_PAYMENT_METHOD') {
+                const opcao = incomingMessage.trim();
+                const clientPhone = remoteJid.replace(/\D/g, '');
 
-                userState[stateKey] = 'START';
+                if (opcao === '0') {
+                    userState[stateKey] = 'START';
+                    await sendMsg(remoteJid, { text: `Cancelado.` });
+                }
+                else if (opcao === '1' || opcao === '2') {
+                    await sendMsg(remoteJid, { text: `Gerando ${opcao === '1' ? 'o código PIX Copia e Cola' : 'o link de pagamento seguro'}... ⏳` });
+                    
+                    try {
+                        const precoOriginal = rawState.servico?.preco || 1;
+                        const nomeServico = rawState.servico?.nome || 'Serviço';
+                        
+                        let txtPagamento = '';
+                        if (opcao === '1') {
+                            const pix = await criarPagamentoPix(precoOriginal, `${clientPhone}@pagamento.whatsapp.com`, `Pagamento ${nomeServico}`);
+                            txtPagamento = `Aqui está o código *PIX Copia e Cola* no valor de R$ ${precoOriginal}:\n\n${pix.qr_code}\n\nAssim que fizer o pagamento pelo seu app de banco, mande o comprovante aqui, por favor!`;
+                        } else {
+                            const link = await criarLinkCartao(precoOriginal, `Pagamento ${nomeServico}`);
+                            txtPagamento = `Aqui está o link 100% seguro do Mercado Pago para efetuar o pagamento de R$ ${precoOriginal}:\n\n🔗 ${link.init_point}\n\nAssim que finalizar, mande um "Ok" pra gente validar!`;
+                        }
+
+                        // Registramos como pré-reservado no lovable (status pendente é o default)
+                        await lovable.agendar({
+                            whatsapp: clientPhone,
+                            nome: rawState.nomeCliente,
+                            servico_id: rawState.id,
+                            data: rawState.dateIso,
+                            horario: rawState.horaEscolhida,
+                            forma_pagamento: opcao === '1' ? 'pix' : 'cartao'
+                        });
+
+                        await sendMsg(remoteJid, { text: txtPagamento });
+                        await sendMsg(remoteJid, { text: `✅ *Vaga Reservada com sucesso!* 🎉\nFicou configurada para *${rawState.data} às ${rawState.horaEscolhida}*.\nSe puder enviar o comprovante assim que pagar, agradecemos! ❤️` });
+
+                    } catch (err: any) {
+                        console.error("Erro Pagamento:", err);
+                        await sendMsg(remoteJid, { text: `Poxa, deu erro na hora de gerar a cobrança pelo Mercado Pago! 😭 Chame um atendente humano para te passar os dados.` });
+                    }
+                    userState[stateKey] = 'START';
+                }
+                else {
+                    await sendMsg(remoteJid, { text: `⚠️ Opção inválida.\nDigite 1 para PIX, 2 para Cartão ou 0 para cancelar.` });
+                }
             }
             else if (currentState === 'WAITING_HUMAN') {
                 // Aqui podemos criar lógicas caso o usuário queira desistir de aguardar e voltar ao robô
