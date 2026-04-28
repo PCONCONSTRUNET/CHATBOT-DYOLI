@@ -386,13 +386,24 @@ async function connectToWhatsApp() {
             let dataISO = '';
             const hoje = new Date();
 
+            // Helper para formatar data local (Brasil) sem fuso
+            const getBrazilDate = (d: Date) => {
+                // Formata para YYYY-MM-DD no fuso de SP (en-CA retorna YYYY-MM-DD)
+                const iso = d.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+                const [y, m, day] = iso.split('-');
+                return { iso, br: `${day}/${m}` };
+            };
+
             if (dataBR.toLowerCase() === 'hoje') {
-                dataISO = hoje.toISOString().split('T')[0];
-                dataBR = hoje.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+                const res = getBrazilDate(hoje);
+                dataISO = res.iso;
+                dataBR = res.br;
             } else if (dataBR.toLowerCase() === 'amanhã' || dataBR.toLowerCase() === 'amanha') {
-                const amanha = new Date(hoje.getTime() + 86400000);
-                dataISO = amanha.toISOString().split('T')[0];
-                dataBR = amanha.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+                const amanha = new Date(hoje);
+                amanha.setDate(hoje.getDate() + 1);
+                const res = getBrazilDate(amanha);
+                dataISO = res.iso;
+                dataBR = res.br;
             } else {
                 // Aceita DD/MM ou DD/MM/YYYY
                 const match = dataBR.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/);
