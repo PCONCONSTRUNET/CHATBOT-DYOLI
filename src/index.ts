@@ -1,544 +1,609 @@
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 import makeWASocket, { DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, Browsers } from '@whiskeysockets/baileys';
-
-// Inicializa o banco de dados caso as chaves existam no .env
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_KEY || '';
-const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
-
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import qrcode from 'qrcode-terminal';
-// @ts-ignore
 import QRCode from 'qrcode';
 import express from 'express';
+import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
-import { lovable } from './lovable.js';
-import { criarPagamentoPix, criarLinkCartao } from './mercadopago.js';
-import { criarPagamentoPixMistic } from './misticpay.js';
+import { createLovableClient } from './lovable-factory.js';
+import { createPaymentClients } from './payments-factory.js';
+import { loadInstanceConfig } from './config.js';
+import type { InstanceConfig } from './config.js';
+import { startReminders } from './reminders.js';
+import { SEPARATOR, formatMsg } from './utils.js';
+
+// Pega o caminho da config do argumento da linha de comando
+const configPath = process.argv[2];
+if (!configPath) {
+    console.error('❌ Caminho da configuração não fornecido!');
+    process.exit(1);
+}
+
+// Carrega a configuração inicial
+let config: InstanceConfig = loadInstanceConfig(configPath);
+
+// Inicializa clients
+const supabase = createClient(config.supabaseUrl, config.supabaseKey);
+const lovable = createLovableClient(config);
+const payments = createPaymentClients(config);
 
 const app = express();
-const port = process.env.PORT || 3000;
-
-// Variável para armazenar o QR Code mais recente
-let latestQR = '';
-
-app.get('/', async (req, res) => {
-    if (!latestQR) {
-        res.send('<h1>Aguardando QR Code...</h1><p>Se o bot já estiver conectado, você verá uma mensagem aqui em breve.</p><script>setTimeout(() => location.reload(), 2000)</script>');
-        return;
-    }
-    
-    try {
-        const qrImage = await QRCode.toDataURL(latestQR);
-        res.send(`
-            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif; background-color: #f0f2f5;">
-                <div style="background: white; padding: 20px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center;">
-                    <h1 style="color: #128c7e;">Conectar WhatsApp</h1>
-                    <p style="color: #666;">Aponte seu celular para o código abaixo:</p>
-                    <img src="${qrImage}" style="width: 300px; height: 300px; margin: 20px 0;" />
-                    <p style="font-size: 14px; color: #999;">O site atualiza sozinho quando conectar.</p>
-                </div>
-                <script>setTimeout(() => location.reload(), 5000)</script>
-            </div>
-        `);
-    } catch (err) {
-        res.status(500).send('Erro ao gerar imagem do QR Code');
-    }
-});
-
-let globalSock: any = null;
+app.use(cors());
 app.use(express.json());
 
-app.post('/webhook/mercadopago', async (req, res) => {
+
+let globalSock: any = null;
+let latestQR = '';
+let reminderInterval: NodeJS.Timeout | null = null;
+
+const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+// Middleware de segurança para webhooks
+const authMiddleware = (req: any, res: any, next: any) => {
+    const authHeader = req.headers['authorization'];
+    const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
+    const token = req.headers['x-webhook-token'] || req.body.token || req.query.token || bearerToken;
+
+    if (token !== config.webhookSecret) {
+        console.log(`[🔐 ${config.id}] Bloqueado: Token inválido.`);
+        return res.status(401).json({ erro: 'Não autorizado' });
+    }
+    next();
+};
+
+app.post('/api/refresh', authMiddleware, (req, res) => {
     try {
-        const payload = req.body;
-        // Identifica chamadas referentes a pagamentos
-        const idPagamento = payload.data?.id || req.query?.['data.id'];
-        
-        if (idPagamento) {
-            const { consultarPagamento } = await import('./mercadopago.js');
-            const pago = await consultarPagamento(idPagamento);
+        config = loadInstanceConfig(configPath);
+        console.log(`[🔄 ${config.id}] Configuração recarregada!`);
+        res.json({ sucesso: true });
+    } catch (err: any) {
+        res.status(500).json({ erro: err.message });
+    }
+});
+
+app.post('/webhook/notificacao', authMiddleware, async (req: any, res: any) => {
+    try {
+        const { numero, mensagem } = req.body;
+        if (!numero || !mensagem) return res.status(400).json({ erro: 'Faltando dados' });
+
+        // LOG para rastrear a origem de mensagens inesperadas
+        console.log(`[📨 ${config.id}] Webhook recebido | IP: ${req.ip} | Numero: ${numero} | Msg: "${mensagem}"`);
+
+        // Bloqueia mensagens de teste para não incomodar o cliente
+        const msgLower = mensagem.toLowerCase().trim();
+        if (msgLower === 'ola teste' || msgLower === 'olá teste' || msgLower === 'hello test') {
+            console.log(`[🚫 ${config.id}] Mensagem de teste BLOQUEADA: "${mensagem}"`);
+            return res.json({ sucesso: true, aviso: 'Mensagem de teste ignorada' });
+        }
+
+        if (globalSock) {
+            let tel = numero.replace(/\D/g, '');
+            if (tel.length === 10 || tel.length === 11) tel = '55' + tel;
+            const jid = tel.includes('@') ? tel : `${tel}@s.whatsapp.net`;
             
-            if (pago.status === 'approved' && pago.external_reference) {
-                // Recupera o contato pelo reference
-                if (globalSock) {
-                   const tel = pago.external_reference.includes('@') ? pago.external_reference : `${pago.external_reference}@s.whatsapp.net`;
-                   await globalSock.sendMessage(tel, { text: `✅ *Recebemos o Pagamento!* 🎉\n\nIdentificamos o pagamento de R$ ${pago.transaction_amount} do seu Pix/Cartão.\nSua reserva está 100% garantida. Muito obrigado!` });
-                }
+            if (globalSock.sendWithTyping) {
+                await globalSock.sendWithTyping(jid, { text: mensagem });
+            } else {
+                await globalSock.sendMessage(jid, { text: mensagem });
             }
+            res.json({ sucesso: true });
+        } else {
+            res.status(503).json({ erro: 'Bot desconectado' });
         }
-        res.sendStatus(200);
-    } catch(err) {
-        console.error('Erro no Webhook MP:', err);
-        res.sendStatus(500);
+    } catch (err: any) {
+        res.status(500).json({ erro: err.message });
     }
 });
 
-app.post('/webhook/misticpay', async (req, res) => {
+app.get('/api/status', async (req, res) => {
+    const isConnected = !!globalSock?.user;
+    let qrBase64 = '';
+    if (latestQR && !isConnected) {
+        try { qrBase64 = await QRCode.toDataURL(latestQR); } catch (err) {}
+    }
+    res.json({ 
+        status: isConnected ? 'CONNECTED' : (latestQR ? 'QR_READY' : 'WAITING'), 
+        qr: latestQR,
+        code: latestQR,
+        qrcode: qrBase64,
+        pairingCodeEnabled: true
+    });
+});
+
+app.post('/api/pair', async (req, res) => {
+    const phone = req.body.phone as string;
+    if (!phone) return res.status(400).json({ erro: 'Telefone não fornecido' });
+    if (!globalSock) return res.status(503).json({ erro: 'Bot não inicializado' });
+    
     try {
-        const payload = req.body;
-        console.log("🔔 [MisticPay] Webhook Recebido:", JSON.stringify(payload, null, 2));
-
-        // Conforme docs da Mistic Pay:
-        // payload.status = 'COMPLETO' | 'PENDENTE' | 'FALHA'
-        // payload.transactionId = o ID que enviamos na criação (usamos o número do WhatsApp)
-        const status = payload.status;
-        const transactionId: string = String(payload.transactionId || ''); // ex: 5511999998888
-        const valor = (payload.value || 0) / 100; // Mistic envia em centavos
-
-        if (status === 'COMPLETO' && transactionId) {
-            if (globalSock) {
-                // O transactionId é o numero do WhatsApp sem formatação que enviamos como ID
-                const tel = transactionId.includes('@') ? transactionId : `${transactionId}@s.whatsapp.net`;
-                await globalSock.sendMessage(tel, {
-                    text: `✅ *Pagamento Confirmado!* 🎉\n\nRecebemos o seu PIX de R$ ${valor.toFixed(2)}. Sua reserva está 100% garantida!\n\nAté breve no salão! 💅`
-                });
-                console.log(`[MisticPay] ✅ Pagamento confirmado. Mensagem enviada para ${tel}`);
-            }
-        } else if (status === 'FALHA') {
-            console.log(`[MisticPay] ❌ Pagamento falhou para transação ${transactionId}`);
-        }
-
-        res.sendStatus(200);
-    } catch(err) {
-        console.error('Erro no Webhook MisticPay:', err);
-        res.sendStatus(500);
+        const code = await globalSock.requestPairingCode(phone.replace(/\D/g, ''));
+        res.json({ code });
+    } catch (err: any) {
+        res.status(500).json({ erro: err.message });
     }
 });
 
-app.listen(port, () => {
-    console.log(`[HealthCheck] Servidor ouvindo na porta ${port}`);
+app.post('/api/logout', authMiddleware, async (req, res) => {
+    try {
+        if (globalSock) {
+            await globalSock.logout();
+            globalSock = null;
+            res.json({ sucesso: true });
+        } else {
+            res.status(400).json({ erro: 'Bot já desconectado' });
+        }
+    } catch (err: any) { res.status(500).json({ erro: err.message }); }
 });
+
+const userState: Record<string, any> = {};
+const processedMessages = new Set<string>();
 
 async function connectToWhatsApp() {
-    // Salva o estado da autenticação (credenciais) em uma pasta local
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
-    
-    // Busca a versão mais recente do WhatsApp Web para não ser bloqueado (Erro 405)
+    const { state, saveCreds } = await useMultiFileAuthState(config.sessionFolder || `sessions/${config.id}`);
     const { version } = await fetchLatestBaileysVersion();
 
     const sock = makeWASocket({
         version,
         auth: state,
-        // Silenciando os logs gigantescos
         logger: pino({ level: 'silent' }) as any,
-        // Mudando a identidade para Ubuntu/Chrome para melhorar o pareamento
-        browser: ['Ubuntu', 'Chrome', '20.0.04'],
+        printQRInTerminal: false,
+        browser: Browsers.macOS('Chrome'),
+        syncFullHistory: false,
     });
+
+    const supabase = createClient(config.supabaseUrl, config.supabaseKey);
+    (sock as any).supabase = supabase;
+
+    // Função auxiliar para enviar mensagem com "falso digitando"
+    const sendWithTyping = async (jid: string, content: any, options: any = {}) => {
+        try {
+            await sock.sendPresenceUpdate('composing', jid);
+            await delay(500);
+            await sock.sendPresenceUpdate('composing', jid);
+            
+            const text = content.text || '';
+            const typingTime = Math.max(2000, Math.min(text.length * 50, 4000));
+            await delay(typingTime);
+            
+            await sock.sendPresenceUpdate('paused', jid);
+            return await sock.sendMessage(jid, content, options);
+        } catch (e) {
+            return await sock.sendMessage(jid, content, options);
+        }
+    };
+
+    // Anexa ao global para o webhook usar
+    (sock as any).sendWithTyping = sendWithTyping;
 
     globalSock = sock;
 
-    sock.ev.on('connection.update', async (update) => {
+    sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
-        const phoneNumber = process.env.PHONE_NUMBER;
-
-        if (qr && phoneNumber && !sock.authState.creds.registered) {
-            const cleanedNumber = phoneNumber.replace(/\D/g, '');
-            console.log(`📡 Gerando código para: ${cleanedNumber} (Aguardando 5s...)`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
-            try {
-                const code = await sock.requestPairingCode(cleanedNumber);
-                console.log('--------------------------------------------------');
-                console.log(`🔑 SEU CÓDIGO DE ACESSO: ${code}`);
-                console.log('--------------------------------------------------');
-            } catch (err) {
-                console.error('Erro ao gerar código de pareamento:', err);
-            }
-        } else if (qr && !phoneNumber) {
-            latestQR = qr; // Salva para o navegador
-            console.log('📱 QR Code recebido! Acesse o link do Railway para escanear visualmente.');
+        if (qr) {
+            latestQR = qr;
+            console.log(`[📱 ${config.id}] QR Code pronto!`);
             qrcode.generate(qr, { small: true });
         }
-
-        if (connection === 'close') {
-            latestQR = ''; // Limpa ao fechar
-            const error = lastDisconnect?.error as Boom;
-            const statusCode = error?.output?.statusCode;
-            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-            console.log('🛑 Conexão fechada. Erro:', error?.message || 'Sem mensagem', 'Status:', statusCode);
-            
-            if (statusCode === 401 || statusCode === DisconnectReason.loggedOut) {
-                console.log('🧹 Limpando arquivos de sessão corrompidos e reiniciando...');
-                const authPath = path.resolve('auth_info_baileys');
-                try {
-                    if (fs.existsSync(authPath)) {
-                        // Em vez de apagar a pasta (que é um Volume), apagamos apenas o conteúdo
-                        const files = fs.readdirSync(authPath);
-                        for (const file of files) {
-                            fs.rmSync(path.join(authPath, file), { recursive: true, force: true });
-                        }
-                    }
-                    console.log('✅ Arquivos limpos com sucesso. Reiniciando...');
-                } catch (err) {
-                    console.error('Erro ao limpar arquivos:', err);
-                }
-                process.exit(1); 
+        if (connection === 'open') { 
+            latestQR = ''; 
+            console.log(`[✅ ${config.id}] Conectado!`); 
+            if (!reminderInterval) {
+                reminderInterval = startReminders(config, sock);
             }
-
-            console.log('🔄 Reconectando:', shouldReconnect);
-            if (shouldReconnect) {
+        }
+        if (connection === 'close') {
+            if (reminderInterval) {
+                clearInterval(reminderInterval);
+                reminderInterval = null;
+            }
+            
+            const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+            
+            if (statusCode === DisconnectReason.loggedOut) {
+                console.log(`[🚪 ${config.id}] Logout detectado. Limpando sessão e reiniciando...`);
+                const sessionPath = path.resolve(config.sessionFolder || `sessions/${config.id}`);
+                if (fs.existsSync(sessionPath)) {
+                    fs.rmSync(sessionPath, { recursive: true, force: true });
+                }
                 setTimeout(connectToWhatsApp, 3000);
             } else {
-                console.log('❌ Você foi desconectado permanentemente. Verifique seu número e tente novamente.');
+                console.log(`[🔄 ${config.id}] Conexão fechada (Motivo: ${statusCode}). Reconectando em 3s...`);
+                setTimeout(connectToWhatsApp, 3000);
             }
-        } else if (connection === 'open') {
-            console.log('✅ Bot conectado com sucesso e pronto para responder!');
         }
     });
 
-    // Salva as credenciais recém-geradas automaticamente
     sock.ev.on('creds.update', saveCreds);
 
-    // Função auxiliar para simular "digitando..." com delay
-    const sendMsg = async (jid: string, content: any) => {
-        await sock.sendPresenceUpdate('composing', jid);
-        const delay = Math.min(Math.max(content.text ? content.text.length * 20 : 1500, 1500), 3000); 
-        await new Promise(resolve => setTimeout(resolve, delay));
-        await sock.sendPresenceUpdate('paused', jid);
-        return await sock.sendMessage(jid, content);
-    };
-
-    // Estado do usuário para simular um menu de atendimento
-    // Dica para produção: utilizar um banco de dados para salvar os estágios
-    const userState: Record<string, any> = {};
-
     sock.ev.on('messages.upsert', async (m) => {
+        if (!m.messages || m.messages.length === 0) return;
         const msg = m.messages[0];
+        if (!msg.message || msg.key.fromMe || msg.key.remoteJid === 'status@broadcast') return;
+
+        // Evita processar a mesma mensagem duas vezes
+        const msgId = msg.key.id;
+        if (msgId && processedMessages.has(msgId)) return;
+        if (msgId) {
+            processedMessages.add(msgId);
+            setTimeout(() => processedMessages.delete(msgId), 60000); // Limpa após 1 minuto
+        }
         
-        if (!msg) return;
+        const remoteJid = msg.key.remoteJid!;
+        const incomingText = (msg.message.conversation || msg.message.extendedTextMessage?.text || '').trim();
+        if (!incomingText) return;
 
-        // Ignora mensagens do bot, status e reações
-        if (!msg.message || msg.key?.fromMe || msg.key?.remoteJid === 'status@broadcast' || msg.message?.reactionMessage) return;
+        const stateKey = remoteJid;
+        let rawState = userState[stateKey] || { state: 'START' };
 
-        const remoteJid = msg.key?.remoteJid;
-        if (!remoteJid) return;
 
-        // Ignora mensagens originadas de Grupos (JID termina com @g.us)
-        if (remoteJid.endsWith('@g.us')) return;
 
-        // Extrai o texto da mensagem de várias fontes possíveis (texto simples, mensagem estendida, legenda de imagem/vídeo)
-        const incomingMessage = 
-            msg.message?.conversation || 
-            msg.message?.extendedTextMessage?.text || 
-            msg.message?.imageMessage?.caption ||
-            msg.message?.videoMessage?.caption ||
-            "";
-        
-        if (!incomingMessage && !msg.message?.buttonsResponseMessage && !msg.message?.templateButtonReplyMessage) {
-            console.log(`[👤 ${remoteJid}] Mensagem ignorada (tipo não suportado ou vazia)`);
+        const sendMsg = async (text: string) => {
+            await (sock as any).sendWithTyping(remoteJid, { text });
+        };
+
+        const currentState = rawState.state;
+
+        // ── Boas-vindas para saudações ou estado inicial ──
+        const greetings = ['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'menu', 'voltar'];
+        if (greetings.includes(incomingText.toLowerCase()) || currentState === 'START') {
+            const welcome = config.messages?.welcome || `Bem-vindo à ${config.name}!`;
+            await sendMsg(formatMsg(welcome, { empresa: config.name, servicos_extra: config.welcomeExtra }));
+            userState[stateKey] = { state: 'MENU' };
             return;
         }
 
-        const stateKey = remoteJid;
-        const rawState = userState[stateKey] || 'START';
-        const currentState = typeof rawState === 'string' ? rawState : rawState.state;
-
-        console.log(`[👤 ${remoteJid}] Mensagem: "${incomingMessage}" | Estado atual: ${currentState}`);
-
-        try {
-            // Se estiver no início ou resetado, enviamos o Menu Principal
-            if (currentState === 'START') {
-                const welcomeText = `Olá! 👋 Bem-vindo ao nosso Salão.\n\nComo posso te ajudar hoje?\n\n1️⃣ Agendar pelo site\n2️⃣ Agendar por aqui\n3️⃣ Meus agendamentos\n4️⃣ Falar com atendente\n\n_Digite apenas o número da opção desejada._`;
-                
-                await sendMsg(remoteJid, { text: welcomeText });
-                userState[stateKey] = 'MENU';
-            } 
-            else if (currentState === 'MENU') {
-                // Checa qual número o usuário digitou
-                switch (incomingMessage.trim()) {
-                    case '1':
-                        await sendMsg(remoteJid, { text: `Ótimo! Você pode ver todos os horários livres e agendar rapidinho pelo nosso site:\n\n🔗 *[COLOQUE AQUI O LINK DO SEU SITE LOVABLE]*\n\nQualquer dúvida, é só chamar a gente aqui!` });
-                        userState[stateKey] = 'START';
-                        break;
-
-                    case '2':
-                        await sendMsg(remoteJid, { text: `Buscando nossos serviços disponíveis... 🔎` });
+        // ── MENU PRINCIPAL ──
+        if (currentState === 'MENU') {
+            switch (incomingText) {
+                case '1': { // Agendar por aqui
+                    await sendMsg(`Buscando procedimentos disponíveis... ⏳`);
+                    try {
+                        let servicos: any[] = [];
                         try {
                             const res = await lovable.listarServicos();
-                            // Se a API retornar um array direto ou um objeto { success: true, data: [...] }
-                            const servicos = Array.isArray(res) ? res : (res.data || res.servicos || []);
+                            servicos = res.data || res.services || (Array.isArray(res) ? res : []);
+                        } catch (fnErr) {
+                            console.log('Função bot-servicos falhou ou 404, tentando busca direta no banco...');
+                            // Fallback: Busca direta na tabela 'services'
+                            const { data: dbServices, error: dbErr } = await (sock as any).supabase
+                                .from('services')
+                                .select('*')
+                                .eq('active', true);
                             
-                            if (servicos.length === 0) {
-                                await sendMsg(remoteJid, { text: `Parece que não temos serviços cadastrados no momento. Tente de novo mais tarde. 😢` });
-                                userState[stateKey] = 'START';
-                            } else {
-                                let msg = `Temos esses serviços maravilhosos! Qual você deseja?\n\n`;
-                                servicos.forEach((srv: any, i: number) => {
-                                    const nome = srv.nome || srv.name || srv.title || 'Serviço';
-                                    const preco = srv.preco || srv.price ? `- R$ ${srv.preco || srv.price}` : '';
-                                    const numStr = String(i + 1).padStart(2, '0');
-                                    msg += `*${numStr}.* ${nome} ${preco}\n`;
-                                });
-                                msg += `\n_Digite o número do serviço ou *0* para voltar._`;
-                                
-                                userState[stateKey] = { state: 'WAITING_SERVICE', servicos };
-                                await sendMsg(remoteJid, { text: msg });
-                            }
-                        } catch (err: any) {
-                             console.error('Erro ao listar serviços:', err.message);
-                             await sendMsg(remoteJid, { text: `Desculpe, o nosso sistema de agendamento está offline no momento. 🔧` });
-                             userState[stateKey] = 'START';
+                            if (dbErr) throw dbErr;
+                            servicos = dbServices || [];
                         }
-                        break;
-
-                    case '3':
-                        await sendMsg(remoteJid, { text: `🔎 Consultando seus agendamentos...` });
-                        try {
-                            // Pega o número do cliente que vem pelo JID (ex: 5511999999999)
-                            const clientPhone = remoteJid.replace(/\D/g, '');
-                            const res = await lovable.meusAgendamentos(clientPhone);
-                            const agendamentos = Array.isArray(res) ? res : (res.data || res.agendamentos || []);
-                            
-                            if (agendamentos.length === 0) {
-                                await sendMsg(remoteJid, { text: `Você não tem nenhum agendamento pendente no momento! 📅` });
-                            } else {
-                                let msg = `*Suas próximas visitas:*\n\n`;
-                                agendamentos.forEach((ag: any, index: number) => {
-                                    const dataFormatada = ag.data || ag.date || 'Data a confirmar';
-                                    const hora = ag.horario || ag.time || 'Hora a confirmar';
-                                    const nomeServ = ag.servico?.nome || ag.servico || 'Procedimento';
-                                    
-                                    msg += `📌 *${nomeServ}*\n📅 ${dataFormatada} às ${hora}\nStatus: ${ag.status}\n\n`;
-                                });
-                                await sendMsg(remoteJid, { text: msg });
-                            }
-                            userState[stateKey] = 'START';
-                        } catch (err: any) {
-                            console.error('Erro meus agendamentos:', err.message);
-                            await sendMsg(remoteJid, { text: `Não consegui puxar seus agendamentos agora. 😕` });
-                            userState[stateKey] = 'START';
-                        }
-                        break;
-
-                    case '4':
-                        await sendMsg(remoteJid, { text: `🎧 *Atendimento Humano*\n\nUm de nossos profissionais já vai falar com você. Por favor, aguarde só um momento.` });
-                        userState[stateKey] = 'WAITING_HUMAN';
-                        break;
-
-                    case '0':
-                        userState[stateKey] = 'START';
-                        await sendMsg(remoteJid, { text: `🔄 *Retornando...*` });
-                        break;
-
-                    default:
-                        await sendMsg(remoteJid, { text: `⚠️ *Opção Inválida*\n\nPor favor, escolha uma das opções do menu (*1, 2, 3* ou *4*).` });
-                        break;
-                }
-            }
-            else if (currentState === 'WAITING_SERVICE') {
-                if (incomingMessage.trim() === '0') {
-                    userState[stateKey] = 'START';
-                    await sendMsg(remoteJid, { text: `Cancelado. Retornando ao início...` });
-                } else {
-                    const servicosList = rawState.servicos;
-                    const index = parseInt(incomingMessage.trim()) - 1;
-
-                    if (isNaN(index) || index < 0 || index >= servicosList.length) {
-                        await sendMsg(remoteJid, { text: `Opção inválida! Digite o número correspondente de 1 a ${servicosList.length}, ou 0 para voltar.` });
-                    } else {
-                        const servicoEscolhido = servicosList[index];
-                        const servId = servicoEscolhido.id;
-                        const servNome = servicoEscolhido.nome || servicoEscolhido.name || 'este serviço';
-
-                        await sendMsg(remoteJid, { text: `Você selecionou *${servNome}*.\n\nPara qual data você gostaria? (Digite no formato Dia/Mês. Ex: 25/12)` });
-                        userState[stateKey] = { state: 'WAITING_DATE', servico: servicoEscolhido, id: servId };
-                    }
-                }
-            }
-            else if (currentState === 'WAITING_DATE') {
-                if (incomingMessage.trim() === '0') {
-                    userState[stateKey] = 'START';
-                    await sendMsg(remoteJid, { text: `Cancelado. Retornando...` });
-                } else {
-                    // Aqui faremos a ponte simples com a API para ver os horários. 
-                    // No mundo real, precisaríamos validar se é uma data possível e converter para YYYY-MM-DD
-                    const dataUser = incomingMessage.trim(); // "25/12"
-                    
-                    // Lógica básica para YYYY-MM-DD
-                    let dateIso = "";
-                    try {
-                        const parts = dataUser.split('/');
-                        const currentYear = new Date().getFullYear();
-                        if (parts.length >= 2) {
-                            dateIso = `${currentYear}-${(parts[1] as string).padStart(2, '0')}-${(parts[0] as string).padStart(2, '0')}`;
-                        } else {
-                            dateIso = `${currentYear}-12-01`; // Placeholder se digitou errado
-                        }
-                    } catch { dateIso = "2024-01-01"; }
-
-                    await sendMsg(remoteJid, { text: `Checando a agenda para ${dataUser}... 📅` });
-                    
-                    try {
-                        const res = await lovable.horariosDisponiveis(rawState.id, dateIso);
                         
-                        // Extrai a lista que pode estar em res.horarios_disponiveis, ou arrays genéricos
-                        let horarios = Array.isArray(res) ? res : (res.horarios_disponiveis || res.horarios || res.slots);
-                        
-                        if (!horarios && Array.isArray(res.data)) {
-                            horarios = res.data;
+                        if (servicos.length === 0) {
+                            await sendMsg('Desculpe, não encontrei nenhum procedimento disponível no momento. 😔');
+                            userState[stateKey] = { state: 'START' };
+                            return;
                         }
 
-                        // Se a resposta ainda não for um array (ex: veio um objeto ou null), forçamos para evitar o crash "is not a function"
-                        if (!Array.isArray(horarios)) {
-                            if (typeof horarios === 'object' && horarios !== null) {
-                                // Se veio um objeto com os horários dentro das chaves, transformamos em array
-                                horarios = Object.values(horarios);
-                            } else {
-                                horarios = [];
-                            }
-                        }
-
-                        if (horarios.length === 0) {
-                            await sendMsg(remoteJid, { text: `Poxa, não temos mais horários vagos neste dia e serviço. Digite outra data, ou *0* para voltar.` });
-                        } else {
-                            let msg = `📅 *Horários disponíveis para ${dataUser}:*\n\n`;
-                            horarios.forEach((hr: any, i: number) => {
-                                const numStr = String(i + 1).padStart(2, '0');
-                                msg += `*${numStr}.* ${hr.horario || hr}\n`;
-                            });
-                            msg += `\nQual horário prefere? (Digite o número)`;
-                            userState[stateKey] = { state: 'WAITING_TIME', id: rawState.id, servico: rawState.servico, data: dataUser, dateIso, horarios };
-                            await sendMsg(remoteJid, { text: msg });
-                        }
-                    } catch (e: any) {
-                        console.error('Erro na data', e.message);
-                        console.log('Dados enviados:', { id: rawState.id, dateIso, dataUser });
-                        userState[stateKey] = 'START';
-                        await sendMsg(remoteJid, { text: `Falha ao buscar horários! Servidor Lovable respondeu: *${e.message}*\n_ID do serviço procurado:_ ${rawState.id}\n\nTente de novo ou agende pelo site (opção 1).` });
-                    }
-                }
-            }
-            else if (currentState === 'WAITING_TIME') {
-                 if (incomingMessage.trim() === '0') {
-                    userState[stateKey] = 'START';
-                    await sendMsg(remoteJid, { text: `Cancelado.` });
-                } else {
-                    const idx = parseInt(incomingMessage.trim()) - 1;
-                    const horariosList = rawState.horarios;
-                    if (isNaN(idx) || idx < 0 || idx >= horariosList.length) {
-                        await sendMsg(remoteJid, { text: `Número inválido.` });
-                    } else {
-                        const hrObj = horariosList[idx];
-                        const horaEscolhida = hrObj.horario || hrObj;
-                        
-                        await sendMsg(remoteJid, { text: `Legal! Para confirmar o agendamento no dia *${rawState.data} às ${horaEscolhida}*, como você se chama? (Nome e Sobrenome)` });
-                        userState[stateKey] = { ...rawState, state: 'WAITING_NAME', horaEscolhida };
-                    }
-                }
-            }
-            else if (currentState === 'WAITING_NAME') {
-                const nomeCliente = incomingMessage.trim();
-                await sendMsg(remoteJid, { text: `Muito prazer, ${nomeCliente}!\n\nComo você prefere realizar o pagamento?\n\n1️⃣ Pagar por aqui\n2️⃣ Pagar no salão` });
-                userState[stateKey] = { ...rawState, state: 'WAITING_PAYMENT_WHERE', nomeCliente };
-            }
-            else if (currentState === 'WAITING_PAYMENT_WHERE') {
-                const opcao = incomingMessage.trim();
-                const clientPhone = remoteJid.replace(/\D/g, '');
-
-                if (opcao === '2') {
-                    // Finaliza como "pagar no salão"
-                    await sendMsg(remoteJid, { text: `Registrando seu agendamento no sistema, ${rawState.nomeCliente}... ⏳` });
-
-                    try {
-                        await lovable.agendar({
-                            whatsapp: clientPhone,
-                            nome: rawState.nomeCliente,
-                            servico_id: rawState.id,
-                            data: rawState.dateIso,
-                            horario: rawState.horaEscolhida,
-                            forma_pagamento: 'salao'
+                        let listMsg = `✨ *PROCEDIMENTOS* ✨\n\n${SEPARATOR}\n`;
+                        servicos.forEach((s: any, i: number) => {
+                            const nome = s.nome || s.name || 'Procedimento';
+                            const valor = s.preco || s.price || 0;
+                            const precoFormatado = parseFloat(valor).toFixed(2).replace('.', ',');
+                            listMsg += `*${i+1}.* ${nome} — R$ ${precoFormatado}\n`;
                         });
-
-                        await sendMsg(remoteJid, { text: `✅ *Agendamento Confirmado!* 🎉\n\nEstá tudo certo para o dia *${rawState.data} às ${rawState.horaEscolhida}*.\nTe esperamos lá! ❤️` });
-                    } catch (err: any) {
-                        console.error('Erro Agendar', err);
-                        await sendMsg(remoteJid, { text: `Poxa, deu erro na hora de confirmar ${err.message || ''}. 😭\nPor favor chame um atendente.` });
+                        listMsg += `\n${SEPARATOR}\n_Digite o número do procedimento ou *0* para voltar._`;
+                        userState[stateKey] = { state: 'SELECT_SERVICE', servicos };
+                        await sendMsg(listMsg);
+                    } catch (err) {
+                        console.error('Erro ao listar serviços:', err);
+                        await sendMsg('Erro ao buscar serviços. Tente novamente mais tarde.');
                     }
-                    userState[stateKey] = 'START';
+                    break;
                 }
-                else if (opcao === '1') {
-                    await sendMsg(remoteJid, { text: `Ótimo! Qual forma de pagamento você prefere utilizar?\n\n1️⃣ Via PIX\n2️⃣ Cartão de Crédito/Débito\n\n_Ou digite *0* para cancelar._` });
-                    userState[stateKey] = { ...rawState, state: 'WAITING_PAYMENT_METHOD' };
-                }
-                else {
-                    await sendMsg(remoteJid, { text: `⚠️ Opção inválida.\nDigite 1 para pagar por aqui ou 2 para pagar no salão.` });
-                }
-            }
-            else if (currentState === 'WAITING_PAYMENT_METHOD') {
-                const opcao = incomingMessage.trim();
-                const clientPhone = remoteJid.replace(/\D/g, '');
 
-                if (opcao === '0') {
-                    userState[stateKey] = 'START';
-                    await sendMsg(remoteJid, { text: `Cancelado.` });
+                case '2': { // Agendar pelo site
+                    await sendMsg(
+                        `🔗 *AGENDAR PELO SITE*\n\n${SEPARATOR}\n\n` +
+                        `Reserve seu horário com facilidade:\n\n` +
+                        `${config.websiteUrl}\n\n${SEPARATOR}`
+                    );
+                    userState[stateKey] = { state: 'START' };
+                    break;
                 }
-                else if (opcao === '1' || opcao === '2') {
-                    await sendMsg(remoteJid, { text: `⏳ Gerando ${opcao === '1' ? 'o código PIX Copia e Cola' : 'o link de pagamento seguro'}...` });
-                    
-                    try {
-                        const precoOriginal = rawState.servico?.preco || 1;
-                        const nomeServico = rawState.servico?.nome || 'Serviço';
-                        // Número limpo do WhatsApp (ex: 5511999998888) — usado como transactionId
-                        // para identificar o cliente no Webhook da Mistic Pay
-                        const phoneNum = clientPhone.replace(/\D/g, '');
-                        const webhookUrl = `https://chatbot-pcon-production.up.railway.app/webhook/misticpay`;
-                        
-                        let txtPagamento = '';
-                        if (opcao === '1') {
-                            // PIX via Mistic Pay
-                            const pix = await criarPagamentoPixMistic({
-                                valor: Number(precoOriginal),
-                                payerName: rawState.nomeCliente || 'Cliente',
-                                payerDocument: '00000000000', // CPF genérico (cliente não informa no bot)
-                                transactionId: phoneNum,      // Usamos o tel como ID para rastrear no Webhook
-                                description: `Agendamento ${nomeServico} - ${rawState.data} ${rawState.horaEscolhida}`,
-                                webhookUrl,
-                            });
-                            txtPagamento = `💰 *PIX Copia e Cola* — R$ ${Number(precoOriginal).toFixed(2)}\n\n\`\`\`${pix.copy_paste}\`\`\`\n\n_Copie o código acima e cole no app do seu banco em "PIX Copia e Cola". Assim que pagar, você receberá a confirmação automaticamente aqui!_ ✅`;
-                        } else {
-                            const link = await criarLinkCartao(precoOriginal, `Pagamento ${nomeServico}`);
-                            txtPagamento = `💳 *Link de Pagamento Seguro* — R$ ${Number(precoOriginal).toFixed(2)}\n\n🔗 ${link.init_point}\n\n_Clique no link acima para pagar com cartão de crédito ou débito. Após a confirmação, você receberá um aviso aqui!_ ✅`;
+
+                case '3': { // Agendamento simplificado
+                    const simpleUrl = config.websiteUrl.endsWith('/')
+                        ? `${config.websiteUrl}simplificada`
+                        : `${config.websiteUrl}/simplificada`;
+                    await sendMsg(
+                        `🚀 *AGENDAMENTO SIMPLIFICADO*\n\n${SEPARATOR}\n\n` +
+                        `Agende em poucos cliques:\n\n` +
+                        `${simpleUrl}\n\n${SEPARATOR}`
+                    );
+                    userState[stateKey] = { state: 'START' };
+                    break;
+                }
+
+                case '4': { // Falar com atendente
+                    await sendMsg(`Transferindo para atendimento humano... 📞\n\nEm breve você será atendido!`);
+                    userState[stateKey] = { state: 'WAITING_HUMAN' };
+                    break;
+                }
+
+                case '5': { // Cuidados pós-tattoo
+                    const cuidadosUrl = config.websiteUrl.endsWith('/')
+                        ? `${config.websiteUrl}cuidados`
+                        : `${config.websiteUrl}/cuidados`;
+                    await sendMsg(
+                        `🖤 *CUIDADOS PÓS-TATTOO*\n\n${SEPARATOR}\n\n` +
+                        `Acesse o guia completo de cuidados:\n\n` +
+                        `${cuidadosUrl}\n\n${SEPARATOR}\n` +
+                        `_Qualquer dúvida, é só me chamar! 🩷_`
+                    );
+                    userState[stateKey] = { state: 'START' };
+                    break;
+                }
+
+                default:
+                    await sendMsg('Opção inválida. Digite o número da opção desejada (1 a 5).');
+            }
+            return;
+        }
+
+        // ── ETAPA 1: Escolha do serviço ──
+        if (currentState === 'SELECT_SERVICE') {
+            if (incomingText === '0') { userState[stateKey] = { state: 'START' }; return; }
+            const idx = parseInt(incomingText) - 1;
+            const servico = rawState.servicos?.[idx];
+            if (!servico) {
+                await sendMsg('Serviço inválido. Digite o número da opção ou *0* para voltar.');
+                return;
+            }
+
+            const nome = servico.nome || servico.name || 'Procedimento';
+            const valor = servico.preco || servico.price || 0;
+            const preco = parseFloat(valor).toFixed(2).replace('.', ',');
+
+            await sendMsg(
+                `✨ *${nome.toUpperCase()}*\n` +
+                `💰 Valor: R$ ${preco}\n\n` +
+                `${SEPARATOR}\n\n` +
+                `📅 Para qual *data* você quer agendar?\n\n` +
+                `Digite no formato *DD/MM* (ex: 10/05)\n` +
+                `ou responda *Hoje* ou *Amanhã*.\n\n` +
+                `_Digite *0* para voltar._`
+            );
+            userState[stateKey] = { state: 'SELECT_DATE', servico };
+            return;
+        }
+
+        // ── ETAPA 2: Escolha da data ──
+        if (currentState === 'SELECT_DATE') {
+            if (incomingText === '0') { userState[stateKey] = { state: 'START' }; return; }
+
+            let dataBR = incomingText.trim();
+            let dataISO = '';
+            const hoje = new Date();
+
+            if (dataBR.toLowerCase() === 'hoje') {
+                dataISO = hoje.toISOString().split('T')[0];
+                dataBR = hoje.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+            } else if (dataBR.toLowerCase() === 'amanhã' || dataBR.toLowerCase() === 'amanha') {
+                const amanha = new Date(hoje.getTime() + 86400000);
+                dataISO = amanha.toISOString().split('T')[0];
+                dataBR = amanha.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+            } else {
+                // Aceita DD/MM ou DD/MM/YYYY
+                const match = dataBR.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/);
+                if (!match) {
+                    await sendMsg('Data inválida. Digite no formato *DD/MM* (ex: 10/05), *Hoje* ou *Amanhã*.');
+                    return;
+                }
+                const dia = match[1].padStart(2, '0');
+                const mes = match[2].padStart(2, '0');
+                const ano = match[3] || hoje.getFullYear().toString();
+                dataISO = `${ano}-${mes}-${dia}`;
+                dataBR = `${dia}/${mes}`;
+            }
+
+            await sendMsg(`Buscando horários disponíveis para *${dataBR}*... ⏳`);
+            try {
+                if (!rawState.servico?.id) {
+                    await sendMsg('Erro: Serviço não identificado. Por favor, recomece o agendamento.');
+                    userState[stateKey] = { state: 'START' };
+                    return;
+                }
+                
+                let horarios: string[] = [];
+                try {
+                    const res = await lovable.horariosDisponiveis(rawState.servico.id, dataISO);
+                    const horariosRaw: any[] = Array.isArray(res) ? res : (res.data || res.horarios || []);
+
+                    // Filtrar apenas horários disponíveis
+                    horarios = horariosRaw.filter(h => {
+                        if (typeof h === 'string') return true;
+                        if (h.disponivel === false) return false;
+                        if (h.ocupado === true) return false;
+                        if (h.status && (h.status === 'ocupado' || h.status === 'bloqueado')) return false;
+                        return true;
+                    }).map(h => typeof h === 'string' ? h : (h.horario || h.hora || String(h)));
+                } catch (fnErr) {
+                    console.log('Função bot-horarios falhou, calculando via banco...');
+                    // Fallback: Busca horas de funcionamento e agendamentos existentes
+                    const targetDate = new Date(dataISO + 'T12:00:00');
+                    const weekday = targetDate.getDay();
+
+                    const { data: bHours } = await (sock as any).supabase
+                        .from('business_hours')
+                        .select('*')
+                        .eq('weekday', weekday)
+                        .single();
+
+                    if (!bHours || bHours.closed) {
+                        horarios = [];
+                    } else {
+                        // Gera horários de hora em hora
+                        const start = parseInt(bHours.open_time.split(':')[0]);
+                        const end = parseInt(bHours.close_time.split(':')[0]);
+                        let possibleSlots = [];
+                        for (let h = start; h < end; h++) {
+                            possibleSlots.push(`${String(h).padStart(2, '0')}:00`);
                         }
 
-                        // Registramos o agendamento no Lovable (status pendente)
-                        await lovable.agendar({
-                            whatsapp: phoneNum,
-                            nome: rawState.nomeCliente,
-                            servico_id: rawState.id,
-                            data: rawState.dateIso,
-                            horario: rawState.horaEscolhida,
-                            forma_pagamento: opcao === '1' ? 'pix' : 'cartao'
-                        });
+                        // Busca agendamentos do dia
+                        const { data: appointments } = await (sock as any).supabase
+                            .from('appointments')
+                            .select('time')
+                            .eq('date', dataISO)
+                            .neq('status', 'cancelado');
 
-                        await sendMsg(remoteJid, { text: txtPagamento });
-                        await sendMsg(remoteJid, { text: `✅ *Vaga Reservada!* 🎉\nAgendado para *${rawState.data} às ${rawState.horaEscolhida}*.\nAssim que o pagamento cair, te avisamos aqui mesmo! ❤️` });
-
-                    } catch (err: any) {
-                        console.error("Erro Pagamento:", err);
-                        await sendMsg(remoteJid, { text: `Ops, tive um erro ao gerar a cobrança. 😕\nChame um atendente para te passar os dados manualmente!` });
+                        const takenTimes = (appointments || []).map((a: any) => a.time);
+                        horarios = possibleSlots.filter(s => !takenTimes.includes(s));
                     }
-                    userState[stateKey] = 'START';
                 }
-                else {
-                    await sendMsg(remoteJid, { text: `⚠️ Opção inválida.\nDigite 1 para PIX, 2 para Cartão ou 0 para cancelar.` });
+
+                if (!horarios || horarios.length === 0) {
+                    await sendMsg(
+                        `😔 Não há horários disponíveis para *${dataBR}*.\n\n` +
+                        `Digite outra data ou *0* para voltar ao menu.`
+                    );
+                    return;
                 }
+
+                let horariosMsg = `🕐 *HORÁRIOS DISPONÍVEIS — ${dataBR}*\n\n${SEPARATOR}\n`;
+                horarios.forEach((hora: string, i: number) => {
+                    horariosMsg += `*${i+1}.* ${hora}\n`;
+                });
+                horariosMsg += `\n${SEPARATOR}\n_Digite o número do horário ou *0* para mudar a data._`;
+
+                userState[stateKey] = { ...rawState, state: 'SELECT_TIME', dataISO, dataBR, horarios };
+                await sendMsg(horariosMsg);
+            } catch (err: any) {
+                console.error('Erro ao buscar horários:', err);
+                await sendMsg(`Erro ao buscar horários. Tente novamente ou escolha outra data.`);
             }
-            else if (currentState === 'WAITING_HUMAN') {
-                // Aqui podemos criar lógicas caso o usuário queira desistir de aguardar e voltar ao robô
-                if (incomingMessage.toLowerCase().trim() === 'voltar') {
-                    await sock.sendMessage(remoteJid, { text: `Ok! Cancelei a transferência para o atendente.` });
-                    userState[stateKey] = 'START';
-                    await sock.sendMessage(remoteJid, { text: `(Mande um "Olá" para reabrir o nosso menu)` });
-                }
+            return;
+        }
+
+        // ── ETAPA 3: Escolha do horário → Resumo do agendamento ──
+        if (currentState === 'SELECT_TIME') {
+            if (incomingText === '0') {
+                await sendMsg(
+                    `📅 Para qual *data* você quer agendar?\n\n` +
+                    `Digite no formato *DD/MM* ou *Hoje* / *Amanhã*.\n\n` +
+                    `_Digite *0* para voltar ao menu._`
+                );
+                userState[stateKey] = { ...rawState, state: 'SELECT_DATE' };
+                return;
             }
-        } catch (error) {
-            console.error('Erro ao enviar mensagem no WhatsApp:', error);
+
+            const idx = parseInt(incomingText) - 1;
+            const horarioSelecionado = rawState.horarios?.[idx];
+            if (horarioSelecionado === undefined || horarioSelecionado === null || isNaN(idx)) {
+                await sendMsg('Horário inválido. Digite o número ou *0* para mudar a data.');
+                return;
+            }
+
+            const hora = typeof horarioSelecionado === 'string'
+                ? horarioSelecionado
+                : (horarioSelecionado.horario || horarioSelecionado.hora || String(horarioSelecionado));
+
+            const servico = rawState.servico;
+            const nome = servico.nome || servico.name || 'Procedimento';
+            const valor = servico.preco || servico.price || 0;
+            const preco = parseFloat(valor).toFixed(2).replace('.', ',');
+
+            await sendMsg(
+                `✅ *RESUMO DO AGENDAMENTO*\n\n${SEPARATOR}\n\n` +
+                `🎨 *Serviço:* ${nome}\n` +
+                `📅 *Data:* ${rawState.dataBR}\n` +
+                `🕐 *Horário:* ${hora}\n` +
+                `💰 *Valor:* R$ ${preco}\n` +
+                `💵 *Pagamento:* Na recepção\n\n` +
+                `${SEPARATOR}\n\n` +
+                `Para confirmar, me diga seu *nome completo*:\n` +
+                `_(ou *0* para cancelar)_`
+            );
+
+            userState[stateKey] = { ...rawState, state: 'GET_NAME', hora };
+            return;
+        }
+
+        // ── ETAPA 4: Coleta nome e cria o agendamento ──
+        if (currentState === 'GET_NAME') {
+            if (incomingText === '0') { userState[stateKey] = { state: 'START' }; return; }
+
+            const nome = incomingText.trim();
+            const { servico, dataISO, dataBR, hora } = rawState;
+
+            if (nome.length < 3) {
+                await sendMsg('Por favor, informe seu *nome completo*.');
+                return;
+            }
+
+            await sendMsg(`Processando seu agendamento, aguarde... ⏳`);
+
+            try {
+                const whatsapp = remoteJid.replace(/\D/g, '');
+                
+                try {
+                    await lovable.agendar({
+                        whatsapp,
+                        nome,
+                        servico_id: servico.id,
+                        data: dataISO,
+                        horario: hora,
+                        forma_pagamento: 'recepcao'
+                    });
+                } catch (fnErr) {
+                    console.log('Função bot-agendar falhou, inserindo direto no banco...');
+                    const { error: dbErr } = await (sock as any).supabase
+                        .from('appointments')
+                        .insert([{
+                            customer_whatsapp: whatsapp,
+                            customer_name: nome,
+                            service_id: servico.id,
+                            date: dataISO,
+                            time: hora,
+                            status: 'confirmado',
+                            payment_method: 'recepcao',
+                            amount: servico.preco || servico.price || 0,
+                            total_amount: servico.preco || servico.price || 0
+                        }]);
+                    
+                    if (dbErr) throw dbErr;
+                }
+
+                const msgSucesso = formatMsg(config.messages?.appointmentConfirmed || 
+                    `✅ *AGENDAMENTO CONFIRMADO!*\n\n${SEPARATOR}\n\n` +
+                    `Tudo certo, *{NOME}*!\nSeu horário está reservado:\n\n` +
+                    `✂️ *Serviço:* {SERVICO}\n📅 *Data:* {DATA}\n🕐 *Horário:* {HORA}\n💰 *Valor:* R$ {VALOR}\n\n` +
+                    `${SEPARATOR}\n_Te esperamos no estúdio! ✨_`, {
+                    nome,
+                    cliente: nome,
+                    servico: servico.nome || servico.name,
+                    data: dataBR,
+                    hora: hora,
+                    valor: parseFloat(servico.preco || servico.price || 0).toFixed(2).replace('.', ',')
+                });
+
+                await sendMsg(msgSucesso);
+                userState[stateKey] = { state: 'START' };
+            } catch (err) {
+                console.error('Erro ao agendar:', err);
+                await sendMsg('Desculpe, ocorreu um erro ao finalizar seu agendamento. Por favor, tente novamente mais tarde ou fale com um atendente.');
+                userState[stateKey] = { state: 'START' };
+            }
+            return;
+        }
+
+        // ── Aguardando atendimento humano — silêncio ──
+        if (currentState === 'WAITING_HUMAN') {
+            return;
         }
     });
-
 }
 
+app.listen(config.port, () => { console.log(`[🌐 ${config.id}] Porta ${config.port}`); });
 connectToWhatsApp();
