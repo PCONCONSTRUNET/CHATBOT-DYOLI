@@ -301,7 +301,17 @@ async function connectToWhatsApp() {
         // ── MENU PRINCIPAL ──
         if (currentState === 'MENU') {
             switch (incomingText) {
-                case '1': { // Agendar por aqui
+                case '1': { // Agendar pelo site
+                    await sendMsg(
+                        `🔗 *AGENDAR PELO SITE*\n\n${SEPARATOR}\n\n` +
+                        `Reserve seu horário com facilidade:\n\n` +
+                        `${config.websiteUrl}\n\n${SEPARATOR}`
+                    );
+                    await setState({ state: 'START' });
+                    break;
+                }
+
+                case '2': { // Agendar por aqui
                     await sendMsg(`Buscando procedimentos disponíveis... ⏳`);
                     try {
                         let servicos: any[] = [];
@@ -310,7 +320,6 @@ async function connectToWhatsApp() {
                             servicos = res.data || res.services || (Array.isArray(res) ? res : []);
                         } catch (fnErr) {
                             console.log('Função bot-servicos falhou ou 404, tentando busca direta no banco...');
-                            // Fallback: Busca direta na tabela 'services'
                             const { data: dbServices, error: dbErr } = await (sock as any).supabase
                                 .from('services')
                                 .select('*')
@@ -343,17 +352,42 @@ async function connectToWhatsApp() {
                     break;
                 }
 
-                case '2': { // Agendar pelo site
-                    await sendMsg(
-                        `🔗 *AGENDAR PELO SITE*\n\n${SEPARATOR}\n\n` +
-                        `Reserve seu horário com facilidade:\n\n` +
-                        `${config.websiteUrl}\n\n${SEPARATOR}`
-                    );
+                case '3': { // Ver meus agendamentos
+                    try {
+                        const phone = remoteJid.replace(/\D/g, '');
+                        const res = await lovable.meusAgendamentos(phone);
+                        const agendamentos = res.data || [];
+
+                        if (agendamentos.length === 0) {
+                            await sendMsg(`Você ainda não possui agendamentos no seu número *${phone}*. 🌸`);
+                        } else {
+                            let msg = `📅 *SEUS AGENDAMENTOS*\n\n${SEPARATOR}\n`;
+                            agendamentos.forEach((a: any) => {
+                                msg += `✨ *${a.services?.name || 'Serviço'}*\n📅 ${a.date}\n🕐 ${a.time}\n\n`;
+                            });
+                            msg += SEPARATOR;
+                            await sendMsg(msg);
+                        }
+                    } catch (err) {
+                        await sendMsg('Erro ao buscar seus agendamentos. Tente novamente mais tarde.');
+                    }
                     await setState({ state: 'START' });
                     break;
                 }
 
-                case '3': { // Agendamento simplificado
+                case '4': { // Falar com Dyoli
+                    await sendMsg(`Transferindo para atendimento humano... 📞\n\nEm breve você será atendido!`);
+                    await setState({ state: 'WAITING_HUMAN' });
+                    break;
+                }
+
+                case '5': { // Dúvidas e Cuidados (IA)
+                    await sendMsg(`Opa! Pode mandar sua dúvida sobre os procedimentos ou cuidados pós-sessão que eu te ajudo! 🤖✨`);
+                    await setState({ state: 'AI_CHATTING' });
+                    break;
+                }
+
+                case '6': { // Agendamento simplificado
                     const simpleUrl = config.websiteUrl.endsWith('/')
                         ? `${config.websiteUrl}simplificada`
                         : `${config.websiteUrl}/simplificada`;
@@ -366,28 +400,8 @@ async function connectToWhatsApp() {
                     break;
                 }
 
-                case '4': { // Falar com atendente
-                    await sendMsg(`Transferindo para atendimento humano... 📞\n\nEm breve você será atendido!`);
-                    await setState({ state: 'WAITING_HUMAN' });
-                    break;
-                }
-
-                case '5': { // Cuidados pós-tattoo
-                    const cuidadosUrl = config.websiteUrl.endsWith('/')
-                        ? `${config.websiteUrl}cuidados`
-                        : `${config.websiteUrl}/cuidados`;
-                    await sendMsg(
-                        `🖤 *CUIDADOS PÓS-TATTOO*\n\n${SEPARATOR}\n\n` +
-                        `Acesse o guia completo de cuidados:\n\n` +
-                        `${cuidadosUrl}\n\n${SEPARATOR}\n` +
-                        `_Qualquer dúvida, é só me chamar! 🩷_`
-                    );
-                    await setState({ state: 'START' });
-                    break;
-                }
-
                 default:
-                    await sendMsg('Opção inválida. Digite o número da opção desejada (1 a 5).');
+                    await sendMsg('Opção inválida. Digite o número da opção desejada (1 a 6).');
             }
             return;
         }
