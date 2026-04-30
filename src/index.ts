@@ -632,10 +632,16 @@ async function connectToWhatsApp() {
     });
 }
 
-app.get('/api/status', (req, res) => {
+app.get('/api/status', async (req, res) => {
+    const isConnected = !!globalSock?.user;
+    let qrBase64 = '';
+    if (latestQR && !isConnected) {
+        try { qrBase64 = await QRCode.toDataURL(latestQR); } catch (err) {}
+    }
     res.json({ 
-        status: globalSock ? (globalSock.user ? 'CONNECTED' : (latestQR ? 'QR_READY' : 'CONNECTING')) : 'DISCONNECTED',
-        qr: latestQR 
+        status: isConnected ? 'CONNECTED' : (latestQR ? 'QR_READY' : 'CONNECTING'), 
+        qr: latestQR,
+        qrcode: qrBase64
     });
 });
 
