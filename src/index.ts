@@ -225,7 +225,7 @@ async function connectToWhatsApp() {
         if (connection === 'open') { 
             latestQR = ''; 
             console.log(`[✅ ${config.id}] Conectado!`); 
-            if (!reminderInterval) {
+            if (!reminderInterval && sock) {
                 reminderInterval = startReminders(config, sock);
             }
         }
@@ -282,7 +282,9 @@ async function connectToWhatsApp() {
 
 
         const sendMsg = async (text: string) => {
-            await (sock as any).sendWithTyping(remoteJid, { text });
+            if (sock && (sock as any).sendWithTyping) {
+                await (sock as any).sendWithTyping(remoteJid, { text });
+            }
         };
 
         const currentState = rawState.state;
