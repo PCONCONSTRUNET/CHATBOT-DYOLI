@@ -636,13 +636,16 @@ app.get('/api/status', async (req, res) => {
     const isConnected = !!globalSock?.user;
     let qrBase64 = '';
     if (latestQR && !isConnected) {
-        try { qrBase64 = await QRCode.toDataURL(latestQR); } catch (err) {}
+        try { qrBase64 = await QRCode.toDataURL(latestQR, { scale: 10, margin: 2 }); } catch (err) {}
     }
     res.json({ 
         status: isConnected ? 'CONNECTED' : (latestQR ? 'QR_READY' : 'CONNECTING'), 
         qr: latestQR,
         code: latestQR,
         qrcode: qrBase64,
+        qrCode: qrBase64,
+        qr_code: qrBase64,
+        image: qrBase64,
         pairingCodeEnabled: true
     });
 });
