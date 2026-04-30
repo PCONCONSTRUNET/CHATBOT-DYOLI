@@ -636,7 +636,16 @@ app.get('/api/status', async (req, res) => {
     const isConnected = !!globalSock?.user;
     let qrBase64 = '';
     if (latestQR && !isConnected) {
-        try { qrBase64 = await QRCode.toDataURL(latestQR, { scale: 10, margin: 2 }); } catch (err) {}
+        try { 
+            qrBase64 = await QRCode.toDataURL(latestQR, { 
+                scale: 12, 
+                margin: 2,
+                color: {
+                    dark: '#000000',
+                    light: '#ffffff'
+                }
+            }); 
+        } catch (err) {}
     }
     res.json({ 
         status: isConnected ? 'CONNECTED' : (latestQR ? 'QR_READY' : 'CONNECTING'), 
