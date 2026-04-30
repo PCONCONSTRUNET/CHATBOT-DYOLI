@@ -658,5 +658,37 @@ async function connectToWhatsApp() {
     });
 }
 
+app.get('/api/status', (req, res) => {
+    res.json({ 
+        status: globalSock ? (globalSock.user ? 'CONNECTED' : (latestQR ? 'QR_READY' : 'CONNECTING')) : 'DISCONNECTED',
+        qr: latestQR 
+    });
+});
+
+app.post('/api/logout', async (req, res) => {
+    try {
+        console.log(`[🔌 ${config.id}] Recebido pedido de logout remoto...`);
+        if (globalSock) {
+            await globalSock.logout();
+        }
+        
+        // Remove a pasta da sessão para garantir limpeza total
+        const sessionPath = config.sessionFolder || `sessions/${config.id}`;
+        if (fs.existsSync(sessionPath)) {
+            fs.rmSync(sessionPath, { recursive: true, force: true });
+        }
+
+        res.json({ success: true, message: 'Desconectado com sucesso. Reiniciando...' });
+        
+        // Pequeno delay para responder e depois reiniciar
+        setTimeout(() => {
+            process.exit(0); // O PM2 vai reiniciar automaticamente
+        }, 1000);
+
+    } catch (err: any) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 app.listen(config.port, () => { console.log(`[🌐 ${config.id}] Porta ${config.port}`); });
 connectToWhatsApp();
