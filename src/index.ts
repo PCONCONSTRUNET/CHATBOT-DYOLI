@@ -54,7 +54,8 @@ const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 const authMiddleware = (req: any, res: any, next: any) => {
     const authHeader = req.headers['authorization'];
     const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
-    const token = req.headers['x-webhook-token'] || req.body.token || req.query.token || bearerToken;
+    const bodyToken = req.body ? req.body.token : null;
+    const token = req.headers['x-webhook-token'] || bodyToken || req.query.token || bearerToken;
 
     if (token !== config.webhookSecret) {
         console.log(`[🔐 ${config.id}] Bloqueado: Token inválido.`);
@@ -229,6 +230,24 @@ async function connectToWhatsApp() {
         const remoteJid = msg.key.remoteJid;
         if (!remoteJid) return;
         
+        let userPhone = '';
+        if (remoteJid.endsWith('@lid')) {
+            const senderPn = (msg.key as any).senderPn?.split('@')[0];
+            const resolvedWa = await sock.onWhatsApp(remoteJid);
+            const resolvedJid = resolvedWa?.[0]?.jid?.split('@')[0];
+            const participant = msg.key.participant || msg.message?.extendedTextMessage?.contextInfo?.participant;
+            
+            console.log(`[DEBUG LID] msg.key:`, JSON.stringify(msg.key));
+            console.log(`[DEBUG LID] resolvedWa:`, JSON.stringify(resolvedWa));
+            console.log(`[DEBUG LID] participant:`, participant);
+            console.log(`[DEBUG LID] senderPn: ${senderPn}, resolvedJid: ${resolvedJid}`);
+
+            userPhone = senderPn || resolvedJid || participant?.split('@')[0] || remoteJid.split('@')[0];
+        } else {
+            userPhone = remoteJid.split('@')[0];
+        }
+        userPhone = userPhone.replace(/\D/g, '');
+
         const incomingText = (msg.message.conversation || msg.message.extendedTextMessage?.text || '').trim();
         if (!incomingText) return;
 
@@ -252,7 +271,10 @@ async function connectToWhatsApp() {
         // ── Boas-vindas para saudações ou estado inicial ──
         const greetings = ['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'menu', 'voltar'];
         if (greetings.includes(incomingText.toLowerCase()) || currentState === 'START') {
-            const welcome = config.messages?.welcome || `Bem-vindo à ${config.name}!`;
+            let welcome = config.messages?.welcome || `Bem-vindo à ${config.name}!`;
+            if (welcome.toLowerCase().includes('ola teste')) {
+                welcome = `✨ *ESTUDIO DYOLI GODIM* ✨\n\nOlá! 💗 Seja muito bem-vindo(a)!\n\n🌸 Tattoo • Piercing • Micropigmentação • Manicure\n\n${SEPARATOR}\nCOMO POSSO TE AJUDAR HOJE?`;
+            }
             await sendMsg(formatMsg(welcome, { empresa: config.name, servicos_extra: config.welcomeExtra }));
             await setState({ state: 'MENU' });
             return;
@@ -277,15 +299,44 @@ async function connectToWhatsApp() {
                         let servicos: any[] = [];
                         try {
                             const res = await lovable.listarServicos();
-                            servicos = res.data || res.services || (Array.isArray(res) ? res : []);
+                            servicos = res.data || res.services || res.servicos || (Array.isArray(res) ? res : []);
                         } catch (fnErr) {
-                            console.log('Função bot-servicos falhou ou 404, tentando busca direta no banco...');
-                            const { data: dbServices, error: dbErr } = await (sock as any).supabase
-                                .from('services')
-                                .select('*')
-                                .eq('active', true);
+                            console.log('Função bot-servicos falhou, tentando busca direta nas tabelas...');
                             
-                            if (dbErr) throw dbErr;
+                            // Tenta buscar em 'procedures'
+                            let { data: dbServices, error: dbErr } = await (sock as any).supabase
+                                .from('procedures')
+                                .select('*');
+                            
+                            console.log(`[🔎 ${config.id}] Busca em 'procedures':`, { count: dbServices?.length, error: dbErr?.message });
+                            
+                            // Se não achar nada, tenta 'services'
+                            if (!dbServices || dbServices.length === 0) {
+                                console.log(`[🔎 ${config.id}] Tentando 'services'...`);
+                                const { data: srvData } = await (sock as any).supabase
+                                    .from('services')
+                                    .select('*');
+                                dbServices = srvData;
+                            }
+
+                            // Se ainda nada, tenta 'procedure' (singular)
+                            if (!dbServices || dbServices.length === 0) {
+                                console.log(`[🔎 ${config.id}] Tentando 'procedure'...`);
+                                const { data: prData } = await (sock as any).supabase
+                                    .from('procedure')
+                                    .select('*');
+                                dbServices = prData;
+                            }
+
+                             // Se ainda nada, tenta 'service' (singular)
+                             if (!dbServices || dbServices.length === 0) {
+                                console.log(`[🔎 ${config.id}] Tentando 'service'...`);
+                                const { data: sData } = await (sock as any).supabase
+                                    .from('service')
+                                    .select('*');
+                                dbServices = sData;
+                            }
+                            
                             servicos = dbServices || [];
                         }
                         
@@ -314,7 +365,7 @@ async function connectToWhatsApp() {
 
                 case '3': { // Ver meus agendamentos
                     try {
-                        const phone = remoteJid.replace(/\D/g, '');
+                        const phone = userPhone;
                         const res = await lovable.meusAgendamentos(phone);
                         const agendamentos = res.data || [];
 
@@ -444,17 +495,17 @@ async function connectToWhatsApp() {
                 let horarios: string[] = [];
                 try {
                     const res = await lovable.horariosDisponiveis(rawState.servico.id, dataISO);
-                    const horariosRaw: any[] = Array.isArray(res) ? res : (res.data || res.horarios || []);
+                    console.log(`[🔎 ${config.id}] Horários para ${dataISO}:`, JSON.stringify(res));
+                    const hRaw = Array.isArray(res) ? res : (res.horarios_disponiveis || res.horarios || res.servicos || res.data || []);
 
-                    // Filtrar apenas horários disponíveis
-                    horarios = horariosRaw.filter(h => {
-                        if (typeof h === 'string') return true;
-                        if (h.disponivel === false) return false;
-                        if (h.ocupado === true) return false;
-                        if (h.status && (h.status === 'ocupado' || h.status === 'bloqueado')) return false;
-                        return true;
-                    }).map(h => typeof h === 'string' ? h : (h.horario || h.hora || String(h)));
-                } catch (fnErr) {
+                    horarios = (Array.isArray(hRaw) ? hRaw : []).map(h => {
+                        if (typeof h === 'string') return h;
+                        return h.horario || h.hora || String(h);
+                    });
+
+                    console.log(`[🔎 ${config.id}] Horários processados:`, horarios.length, horarios);
+                } catch (fnErr: any) {
+                    console.error(`[❌ ${config.id}] Função bot-horarios falhou:`, fnErr.message || fnErr);
                     console.log('Função bot-horarios falhou, calculando via banco...');
                     // Fallback: Busca horas de funcionamento e agendamentos existentes
                     const targetDate = new Date(dataISO + 'T12:00:00');
@@ -571,7 +622,7 @@ async function connectToWhatsApp() {
             await sendMsg(`Processando seu agendamento, aguarde... ⏳`);
 
             try {
-                const whatsapp = remoteJid.replace(/\D/g, '');
+                const whatsapp = userPhone;
                 
                 try {
                     await lovable.agendar({
