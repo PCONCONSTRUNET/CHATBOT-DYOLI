@@ -1,0 +1,27 @@
+{
+  "id": "natan",
+  "name": "Barbearia Natan",
+  "active": true,
+  "port": 3002,
+  "phoneNumber": "",
+  "supabaseUrl": "https://ttecccbrigcckurnezhl.supabase.co",
+  "supabaseKey": "sb_secret__5V1dVy3ZD_7O1MGCoA1TA_Nrn5V_Ng",
+  "supabaseFunctionsUrl": "https://ttecccbrigcckurnezhl.supabase.co/functions/v1",
+  "botApiSecret": "sk_natan_a7f2c9d4e8b1653f90dc42ea7b38",
+  "webhookSecret": "natan_secret_123",
+  "reminder24h": false,
+  "reminder1h": false,
+  "welcomeExtra": "Corte • Barba • Pigmentação",
+  "websiteUrl": "https://www.natanbarber.site",
+  "misticClientId": "",
+  "misticClientSecret": "",
+  "mercadopagoAccessToken": "",
+  "messages": {
+    "welcome": "✂️ *BARBEARIA NATAN* ✂️\n\nE aí, tudo certo? 💈 Seja bem-vindo!\n\n🔥 Corte • Barba • Pigmentação\n\n━━━━━━━━━━━━━━━━━━━━\n*COMO POSSO TE AJUDAR?*\n\n1️⃣ Agendar por aqui mesmo\n2️⃣ Agendar pelo site\n3️⃣ Ver meus agendamentos\n4️⃣ Falar com o Natan\n5️⃣ Dúvidas\n6️⃣ Agendamento simplificado\n\n━━━━━━━━━━━━━━━━━━━━\n_Digite o número da opção._",
+    "appointmentConfirmed": "Olá {nome}! ✅ Seu agendamento foi confirmado para {data} às {hora}. Serviço: {servico}. Te esperamos na Natan Barber!",
+    "appointmentCancelled": "Olá {nome}, seu agendamento de {data} às {hora} ({servico}) foi cancelado. Para reagendar, acesse nosso app. Qualquer dúvida estamos à disposição!",
+    "reminder24h": "Oi {nome}! 👋 Lembrete: você tem um agendamento amanhã ({data}) às {hora} para {servico}. Confirma sua presença? Te aguardamos na Natan Barber!",
+    "reminder1h": "🚨 *FALTA 1 HORA!*\n\nFala, {nome}! ⏳ Seu horário na *Barbearia Natan* começa em *1 hora*!\n\n✂️ *Serviço:* {servico}\n\n━━━━━━━━━━━━━━━━━━━━\n_Cola lá! 🔥_",
+    "paymentConfirmed": "✅ *PAGAMENTO CONFIRMADO* 💈\n\n━━━━━━━━━━━━━━━━━━━━\n\nE aí! Confirmamos o pagamento de *R$ {VALOR}* na *Barbearia Natan*.\n\nSua vaga tá garantida! 🔥\n\n━━━━━━━━━━━━━━━━━━━━\n_Qualquer coisa, chama aqui!_ 💬"
+  }
+}

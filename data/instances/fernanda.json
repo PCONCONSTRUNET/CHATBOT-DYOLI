@@ -1,0 +1,27 @@
+{
+  "id": "fernanda",
+  "name": "Fernanda Hahn Studio",
+  "active": true,
+  "port": 3003,
+  "phoneNumber": "",
+  "supabaseUrl": "https://levghaokyjrhgrjzmpnb.supabase.co",
+  "supabaseKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxldmdoYW9reWpyaGdyanptcG5iIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzE2NTYyNCwiZXhwIjoyMDkyNzQxNjI0fQ.M5oTsFae7NvNEhvAG3FiZtWT6ybVOTfrRD4HHvxTSS8",
+  "supabaseFunctionsUrl": "https://levghaokyjrhgrjzmpnb.supabase.co/functions/v1",
+  "botApiSecret": "sk_fernanda_auto_generated_secret",
+  "webhookSecret": "fernanda_secret_123",
+  "reminder24h": true,
+  "reminder1h": true,
+  "welcomeExtra": "Tattoo • Fine Line • Coberturas",
+  "websiteUrl": "https://fernanda-hahn-studio.vercel.app",
+  "misticClientId": "",
+  "misticClientSecret": "",
+  "mercadopagoAccessToken": "",
+  "messages": {
+    "welcome": "✨ *FERNANDA HAHN STUDIO* ✨\n\nOlá! 🖤 Seja bem-vinda ao meu estúdio de tattoo!\n\n🎨 Tattoo • Fine Line • Coberturas\n\n━━━━━━━━━━━━━━━━━━━━\n*COMO POSSO TE AJUDAR?*\n\n1️⃣ Agendar por aqui\n2️⃣ Agendar pelo site\n3️⃣ Agendamento simplificado\n4️⃣ Falar com atendente\n5️⃣ Cuidados pós-tattoo\n\n━━━━━━━━━━━━━━━━━━━━\n_Digite o número da opção desejada._",
+    "appointmentConfirmed": "Olá {CLIENTE}! ✅ Seu agendamento foi confirmado para {DATA} às {HORA}. Serviço: {SERVICO}. Mal posso esperar para tatuar você! 🖤",
+    "appointmentCancelled": "Olá {CLIENTE}, seu agendamento de {DATA} às {HORA} foi cancelado. Se quiser remarcar, é só chamar! 🖤",
+    "reminder24h": "⏰ *LEMBRETE DE TATTOO*\n\n━━━━━━━━━━━━━━━━━━━━\n\nOlá, *{CLIENTE}*! 👋\n\n📅 *Amanhã* é o dia da nossa sessão no *Fernanda Hahn Studio*!\n\n✨ *Serviço:* {SERVICO}\n🕐 *Horário:* {HORA}\n\n━━━━━━━━━━━━━━━━━━━━\n_Confirme sua presença respondendo SIM! 🖤_",
+    "reminder1h": "🚨 *FALTA 1 HORA!*\n\nOi, *{CLIENTE}*! ⏳\n\nNossa sessão no *Fernanda Hahn Studio* começa em *1 hora*!\n\n🎨 *Serviço:* {SERVICO}\n\n━━━━━━━━━━━━━━━━━━━━\n_Te espero no estúdio! ✨_",
+    "paymentConfirmed": "✅ *PAGAMENTO CONFIRMADO* 🖤\n\n━━━━━━━━━━━━━━━━━━━━\n\nOlá! Recebi seu pagamento de *R$ {VALOR}*.\n\nSua sessão está confirmadíssima! 🎨✨\n\n━━━━━━━━━━━━━━━━━━━━\n_Qualquer dúvida, me chama!_ 💬"
+  }
+}

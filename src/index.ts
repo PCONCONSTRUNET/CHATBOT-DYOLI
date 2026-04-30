@@ -11,20 +11,28 @@ import fs from 'fs';
 import path from 'path';
 import { createLovableClient } from './lovable-factory.js';
 import { createPaymentClients } from './payments-factory.js';
-import { loadInstanceConfig } from './config.js';
+import { loadInstanceConfig, loadConfigFromDb } from './config.js';
 import type { InstanceConfig } from './config.js';
 import { startReminders } from './reminders.js';
 import { SEPARATOR, formatMsg } from './utils.js';
 
-// Pega o caminho da config do argumento da linha de comando
+// Pega o argumento (caminho JSON ou slug do banco)
 const configPath = process.argv[2];
 if (!configPath) {
-    console.error('❌ Caminho da configuração não fornecido!');
+    console.error('❌ Caminho ou slug da configuração não fornecido!');
     process.exit(1);
 }
 
 // Carrega a configuração inicial
-let config: InstanceConfig = loadInstanceConfig(configPath);
+let config: InstanceConfig;
+if (configPath.endsWith('.json')) {
+    config = loadInstanceConfig(configPath);
+} else {
+    config = await loadConfigFromDb(configPath);
+}
+
+// Inicializa cliente mestre para persistência de estado
+const masterSupabase = createClient(process.env.MASTER_SUPABASE_URL!, process.env.MASTER_SUPABASE_KEY!);
 
 // Inicializa clients
 const supabase = createClient(config.supabaseUrl, config.supabaseKey);
@@ -73,10 +81,10 @@ app.post('/webhook/notificacao', authMiddleware, async (req: any, res: any) => {
         // LOG para rastrear a origem de mensagens inesperadas
         console.log(`[📨 ${config.id}] Webhook recebido | IP: ${req.ip} | Numero: ${numero} | Msg: "${mensagem}"`);
 
-        // Bloqueia mensagens de teste para não incomodar o cliente
+        // BLOQUEIO ESTRITO: Não envia nada que contenha "teste" ou "ola teste"
         const msgLower = mensagem.toLowerCase().trim();
-        if (msgLower === 'ola teste' || msgLower === 'olá teste' || msgLower === 'hello test') {
-            console.log(`[🚫 ${config.id}] Mensagem de teste BLOQUEADA: "${mensagem}"`);
+        if (msgLower.includes('teste')) {
+            console.log(`[🚫 ${config.id}] Mensagem contendo "teste" BLOQUEADA.`);
             return res.json({ sucesso: true, aviso: 'Mensagem de teste ignorada' });
         }
 
@@ -139,8 +147,32 @@ app.post('/api/logout', authMiddleware, async (req, res) => {
     } catch (err: any) { res.status(500).json({ erro: err.message }); }
 });
 
-const userState: Record<string, any> = {};
 const processedMessages = new Set<string>();
+
+async function getPersistentState(remoteJid: string) {
+    const { data, error } = await masterSupabase
+        .from('chat_sessions')
+        .select('state, raw_state')
+        .eq('instance_slug', config.id)
+        .eq('remote_jid', remoteJid)
+        .single();
+    
+    if (error || !data) return { state: 'START' };
+    return { state: data.state, ...data.raw_state };
+}
+
+async function savePersistentState(remoteJid: string, stateObj: any) {
+    const { state, ...raw_state } = stateObj;
+    await masterSupabase
+        .from('chat_sessions')
+        .upsert({
+            instance_slug: config.id,
+            remote_jid: remoteJid,
+            state: state,
+            raw_state: raw_state,
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'instance_slug,remote_jid' });
+}
 
 async function connectToWhatsApp() {
     const { state, saveCreds } = await useMultiFileAuthState(config.sessionFolder || `sessions/${config.id}`);
@@ -172,7 +204,9 @@ async function connectToWhatsApp() {
             await sock.sendPresenceUpdate('paused', jid);
             return await sock.sendMessage(jid, content, options);
         } catch (e) {
-            return await sock.sendMessage(jid, content, options);
+            if (sock?.sendMessage) {
+                return await sock.sendMessage(jid, content, options);
+            }
         }
     };
 
@@ -223,22 +257,27 @@ async function connectToWhatsApp() {
     sock.ev.on('messages.upsert', async (m) => {
         if (!m.messages || m.messages.length === 0) return;
         const msg = m.messages[0];
-        if (!msg.message || msg.key.fromMe || msg.key.remoteJid === 'status@broadcast') return;
+        if (!msg || !msg.message || msg.key.fromMe || msg.key.remoteJid === 'status@broadcast') return;
 
         // Evita processar a mesma mensagem duas vezes
         const msgId = msg.key.id;
-        if (msgId && processedMessages.has(msgId)) return;
-        if (msgId) {
-            processedMessages.add(msgId);
-            setTimeout(() => processedMessages.delete(msgId), 60000); // Limpa após 1 minuto
-        }
+        if (!msgId) return;
+        if (processedMessages.has(msgId)) return;
+        processedMessages.add(msgId);
+        setTimeout(() => processedMessages.delete(msgId!), 60000); // Limpa após 1 minuto
         
-        const remoteJid = msg.key.remoteJid!;
+        const remoteJid = msg.key.remoteJid;
+        if (!remoteJid) return;
+        
         const incomingText = (msg.message.conversation || msg.message.extendedTextMessage?.text || '').trim();
         if (!incomingText) return;
 
         const stateKey = remoteJid;
-        let rawState = userState[stateKey] || { state: 'START' };
+        let rawState = await getPersistentState(stateKey);
+
+        const setState = async (newState: any) => {
+            await savePersistentState(stateKey, newState);
+        };
 
 
 
@@ -253,7 +292,7 @@ async function connectToWhatsApp() {
         if (greetings.includes(incomingText.toLowerCase()) || currentState === 'START') {
             const welcome = config.messages?.welcome || `Bem-vindo à ${config.name}!`;
             await sendMsg(formatMsg(welcome, { empresa: config.name, servicos_extra: config.welcomeExtra }));
-            userState[stateKey] = { state: 'MENU' };
+            await setState({ state: 'MENU' });
             return;
         }
 
@@ -281,7 +320,7 @@ async function connectToWhatsApp() {
                         
                         if (servicos.length === 0) {
                             await sendMsg('Desculpe, não encontrei nenhum procedimento disponível no momento. 😔');
-                            userState[stateKey] = { state: 'START' };
+                            await setState({ state: 'START' });
                             return;
                         }
 
@@ -293,7 +332,7 @@ async function connectToWhatsApp() {
                             listMsg += `*${i+1}.* ${nome} — R$ ${precoFormatado}\n`;
                         });
                         listMsg += `\n${SEPARATOR}\n_Digite o número do procedimento ou *0* para voltar._`;
-                        userState[stateKey] = { state: 'SELECT_SERVICE', servicos };
+                        await setState({ state: 'SELECT_SERVICE', servicos });
                         await sendMsg(listMsg);
                     } catch (err) {
                         console.error('Erro ao listar serviços:', err);
@@ -308,7 +347,7 @@ async function connectToWhatsApp() {
                         `Reserve seu horário com facilidade:\n\n` +
                         `${config.websiteUrl}\n\n${SEPARATOR}`
                     );
-                    userState[stateKey] = { state: 'START' };
+                    await setState({ state: 'START' });
                     break;
                 }
 
@@ -321,13 +360,13 @@ async function connectToWhatsApp() {
                         `Agende em poucos cliques:\n\n` +
                         `${simpleUrl}\n\n${SEPARATOR}`
                     );
-                    userState[stateKey] = { state: 'START' };
+                    await setState({ state: 'START' });
                     break;
                 }
 
                 case '4': { // Falar com atendente
                     await sendMsg(`Transferindo para atendimento humano... 📞\n\nEm breve você será atendido!`);
-                    userState[stateKey] = { state: 'WAITING_HUMAN' };
+                    await setState({ state: 'WAITING_HUMAN' });
                     break;
                 }
 
@@ -341,7 +380,7 @@ async function connectToWhatsApp() {
                         `${cuidadosUrl}\n\n${SEPARATOR}\n` +
                         `_Qualquer dúvida, é só me chamar! 🩷_`
                     );
-                    userState[stateKey] = { state: 'START' };
+                    await setState({ state: 'START' });
                     break;
                 }
 
@@ -353,7 +392,7 @@ async function connectToWhatsApp() {
 
         // ── ETAPA 1: Escolha do serviço ──
         if (currentState === 'SELECT_SERVICE') {
-            if (incomingText === '0') { userState[stateKey] = { state: 'START' }; return; }
+            if (incomingText === '0') { await setState({ state: 'START' }); return; }
             const idx = parseInt(incomingText) - 1;
             const servico = rawState.servicos?.[idx];
             if (!servico) {
@@ -374,13 +413,13 @@ async function connectToWhatsApp() {
                 `ou responda *Hoje* ou *Amanhã*.\n\n` +
                 `_Digite *0* para voltar._`
             );
-            userState[stateKey] = { state: 'SELECT_DATE', servico };
+            await setState({ state: 'SELECT_DATE', servico });
             return;
         }
 
         // ── ETAPA 2: Escolha da data ──
         if (currentState === 'SELECT_DATE') {
-            if (incomingText === '0') { userState[stateKey] = { state: 'START' }; return; }
+            if (incomingText === '0') { await setState({ state: 'START' }); return; }
 
             let dataBR = incomingText.trim();
             let dataISO = '';
@@ -422,7 +461,7 @@ async function connectToWhatsApp() {
             try {
                 if (!rawState.servico?.id) {
                     await sendMsg('Erro: Serviço não identificado. Por favor, recomece o agendamento.');
-                    userState[stateKey] = { state: 'START' };
+                    await setState({ state: 'START' });
                     return;
                 }
                 
@@ -488,7 +527,7 @@ async function connectToWhatsApp() {
                 });
                 horariosMsg += `\n${SEPARATOR}\n_Digite o número do horário ou *0* para mudar a data._`;
 
-                userState[stateKey] = { ...rawState, state: 'SELECT_TIME', dataISO, dataBR, horarios };
+                await setState({ ...rawState, state: 'SELECT_TIME', dataISO, dataBR, horarios });
                 await sendMsg(horariosMsg);
             } catch (err: any) {
                 console.error('Erro ao buscar horários:', err);
@@ -505,7 +544,7 @@ async function connectToWhatsApp() {
                     `Digite no formato *DD/MM* ou *Hoje* / *Amanhã*.\n\n` +
                     `_Digite *0* para voltar ao menu._`
                 );
-                userState[stateKey] = { ...rawState, state: 'SELECT_DATE' };
+                await setState({ ...rawState, state: 'SELECT_DATE' });
                 return;
             }
 
@@ -537,13 +576,13 @@ async function connectToWhatsApp() {
                 `_(ou *0* para cancelar)_`
             );
 
-            userState[stateKey] = { ...rawState, state: 'GET_NAME', hora };
+            await setState({ ...rawState, state: 'GET_NAME', hora });
             return;
         }
 
         // ── ETAPA 4: Coleta nome e cria o agendamento ──
         if (currentState === 'GET_NAME') {
-            if (incomingText === '0') { userState[stateKey] = { state: 'START' }; return; }
+            if (incomingText === '0') { await setState({ state: 'START' }); return; }
 
             const nome = incomingText.trim();
             const { servico, dataISO, dataBR, hora } = rawState;
@@ -600,13 +639,14 @@ async function connectToWhatsApp() {
                 });
 
                 await sendMsg(msgSucesso);
-                userState[stateKey] = { state: 'START' };
+                await setState({ state: 'START' });
+                return;
             } catch (err) {
                 console.error('Erro ao agendar:', err);
                 await sendMsg('Desculpe, ocorreu um erro ao finalizar seu agendamento. Por favor, tente novamente mais tarde ou fale com um atendente.');
-                userState[stateKey] = { state: 'START' };
+                await setState({ state: 'START' });
+                return;
             }
-            return;
         }
 
         // ── Aguardando atendimento humano — silêncio ──

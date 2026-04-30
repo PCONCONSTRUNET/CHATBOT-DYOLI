@@ -1,0 +1,25 @@
+{
+  "id": "dyoli",
+  "name": "Estudio Dyoli Godim",
+  "active": false,
+  "port": 3001,
+  "phoneNumber": "",
+  "supabaseUrl": "https://bevahgtmcdicyhjnrylk.supabase.co",
+  "supabaseKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJldmFoZ3RtY2RpY3loam5yeWxrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDE1ODI1NywiZXhwIjoyMDg5NzM0MjU3fQ.SeYyVF6I-IEZA_Ejk8_5gyVXiNE2tVl0Yb9glBdGw2E",
+  "supabaseFunctionsUrl": "https://vlepenxinekoljxecomr.supabase.co/functions/v1",
+  "botApiSecret": "sk_pcon_ef341b29f7a8c5d6e245a89cd01f3e4a",
+  "webhookSecret": "dyoli123",
+  "reminder24h": true,
+  "reminder1h": true,
+  "welcomeExtra": "Tattoo • Piercing • Micropigmentação • Manicure",
+  "websiteUrl": "www.estudiodyoligodim.com.br",
+  "misticClientId": "ci_jv1qky7dg3q1ok7",
+  "misticClientSecret": "cs_8o31ey1ln7jjvml2pxmq69opv",
+  "mercadopagoAccessToken": "APP_USR-4629152469359906-011114-d6116398fc402e148eefb01f9ff8aae4-1362304754",
+  "messages": {
+    "welcome": "✨ *ESTUDIO DYOLI GODIM* ✨\n\nOlá! 🩷 Seja muito bem-vindo(a)!\n\n🌸 Tattoo • Piercing • Micropigmentação • Manicure\n\n━━━━━━━━━━━━━━━━━━━━\n*COMO POSSO TE AJUDAR HOJE?*\n\n1️⃣ Agendar pelo site\n2️⃣ Agendar por aqui mesmo\n3️⃣ Ver meus agendamentos\n4️⃣ Falar com a Dyoli\n5️⃣ Dúvidas e Cuidados Pós-Procedimento\n6️⃣ Agendamento simplificado\n\n━━━━━━━━━━━━━━━━━━━━\n_Digite apenas o número da opção desejada._",
+    "paymentConfirmed": "✅ *PAGAMENTO CONFIRMADO* 🎉\n\n━━━━━━━━━━━━━━━━━━━━\n\nOlá! Identificamos o pagamento de *R$ {VALOR}* aqui no *Estudio Dyoli Godim*.\n\nSua vaga está 100% garantida — mal podemos esperar te receber! 🩷🌸\n\n━━━━━━━━━━━━━━━━━━━━\n_Qualquer dúvida, é só chamar!_ 💬",
+    "reminder24h": "⏰ *LEMBRETE DE AGENDAMENTO*\n\n━━━━━━━━━━━━━━━━━━━━\n\nOlá, *{CLIENTE}*! 👋\n\n📅 *Amanhã* você tem um agendamento no *Estudio Dyoli Godim*:\n\n✨ *Serviço:* {SERVICO}\n🕐 *Horário:* {HORA}\n\n━━━━━━━━━━━━━━━━━━━━\n_Esperamos você! 🩷_",
+    "reminder1h": "🚨 *LEMBRETE — FALTA 1 HORA!*\n\n━━━━━━━━━━━━━━━━━━━━\n\nOi, *{CLIENTE}*! ⏳\n\nSeu agendamento no *Estudio Dyoli Godim* começa em *1 hora*!\n\n✨ *Serviço:* {SERVICO}\n\n━━━━━━━━━━━━━━━━━━━━\n_Te esperamos! ✨_"
+  }
+}

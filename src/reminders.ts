@@ -1,5 +1,6 @@
 import type { InstanceConfig } from './config.js';
 import { SEPARATOR, formatMsg } from './utils.js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 
 
@@ -71,6 +72,7 @@ async function checkAndSendReminders(ctx: ReminderContext) {
                             vars
                         );
 
+                        const jid = `${phone}@s.whatsapp.net`;
                         await sendWhatsApp(jid, text);
                         console.log(`${prefix} ✅ Lembrete 24h enviado para ${phone}`);
 
