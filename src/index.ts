@@ -107,46 +107,6 @@ app.post('/webhook/notificacao', authMiddleware, async (req: any, res: any) => {
     }
 });
 
-app.get('/api/status', async (req, res) => {
-    const isConnected = !!globalSock?.user;
-    let qrBase64 = '';
-    if (latestQR && !isConnected) {
-        try { qrBase64 = await QRCode.toDataURL(latestQR); } catch (err) {}
-    }
-    res.json({ 
-        status: isConnected ? 'CONNECTED' : (latestQR ? 'QR_READY' : 'WAITING'), 
-        qr: latestQR,
-        code: latestQR,
-        qrcode: qrBase64,
-        pairingCodeEnabled: true
-    });
-});
-
-app.post('/api/pair', async (req, res) => {
-    const phone = req.body.phone as string;
-    if (!phone) return res.status(400).json({ erro: 'Telefone não fornecido' });
-    if (!globalSock) return res.status(503).json({ erro: 'Bot não inicializado' });
-    
-    try {
-        const code = await globalSock.requestPairingCode(phone.replace(/\D/g, ''));
-        res.json({ code });
-    } catch (err: any) {
-        res.status(500).json({ erro: err.message });
-    }
-});
-
-app.post('/api/logout', authMiddleware, async (req, res) => {
-    try {
-        if (globalSock) {
-            await globalSock.logout();
-            globalSock = null;
-            res.json({ sucesso: true });
-        } else {
-            res.status(400).json({ erro: 'Bot já desconectado' });
-        }
-    } catch (err: any) { res.status(500).json({ erro: err.message }); }
-});
-
 const processedMessages = new Set<string>();
 
 async function getPersistentState(remoteJid: string) {
