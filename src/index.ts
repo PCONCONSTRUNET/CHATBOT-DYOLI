@@ -641,7 +641,9 @@ app.get('/api/status', async (req, res) => {
     res.json({ 
         status: isConnected ? 'CONNECTED' : (latestQR ? 'QR_READY' : 'CONNECTING'), 
         qr: latestQR,
-        qrcode: qrBase64
+        code: latestQR,
+        qrcode: qrBase64,
+        pairingCodeEnabled: true
     });
 });
 
