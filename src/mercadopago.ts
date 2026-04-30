@@ -12,7 +12,7 @@ export const criarPagamentoPix = async (valor: number, email: string, descricao:
                 transaction_amount: Number(valor),
                 description: descricao,
                 payment_method_id: 'pix',
-                external_reference: external_reference, // Usado para salvar o numero do wpp
+                ...(external_reference ? { external_reference } : {}),
                 payer: {
                     email: email,
                 }
@@ -37,7 +37,7 @@ export const criarLinkCartao = async (valor: number, titulo: string, external_re
     try {
         const resposta = await preference.create({
             body: {
-                external_reference: external_reference,
+                ...(external_reference ? { external_reference } : {}),
                 items: [
                     {
                         id: 'ass',

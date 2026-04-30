@@ -448,7 +448,7 @@ async function connectToWhatsApp() {
             } else {
                 // Aceita DD/MM ou DD/MM/YYYY
                 const match = dataBR.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/);
-                if (!match) {
+                if (!match || !match[1] || !match[2]) {
                     await sendMsg('Data inválida. Digite no formato *DD/MM* (ex: 10/05), *Hoje* ou *Amanhã*.');
                     return;
                 }
