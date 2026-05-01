@@ -233,6 +233,7 @@ async function connectToWhatsApp() {
         let userPhone = '';
         if (remoteJid.endsWith('@lid')) {
             const senderPn = (msg.key as any).senderPn?.split('@')[0];
+            const remoteJidAlt = (msg.key as any).remoteJidAlt?.split('@')[0];
             const resolvedWa = await sock.onWhatsApp(remoteJid);
             const resolvedJid = resolvedWa?.[0]?.jid?.split('@')[0];
             const participant = msg.key.participant || msg.message?.extendedTextMessage?.contextInfo?.participant;
@@ -240,9 +241,9 @@ async function connectToWhatsApp() {
             console.log(`[DEBUG LID] msg.key:`, JSON.stringify(msg.key));
             console.log(`[DEBUG LID] resolvedWa:`, JSON.stringify(resolvedWa));
             console.log(`[DEBUG LID] participant:`, participant);
-            console.log(`[DEBUG LID] senderPn: ${senderPn}, resolvedJid: ${resolvedJid}`);
+            console.log(`[DEBUG LID] senderPn: ${senderPn}, resolvedJid: ${resolvedJid}, remoteJidAlt: ${remoteJidAlt}`);
 
-            userPhone = senderPn || resolvedJid || participant?.split('@')[0] || remoteJid.split('@')[0];
+            userPhone = remoteJidAlt || senderPn || resolvedJid || participant?.split('@')[0] || remoteJid.split('@')[0];
         } else {
             userPhone = remoteJid.split('@')[0];
         }
@@ -674,6 +675,46 @@ async function connectToWhatsApp() {
                 await setState({ state: 'START' });
                 return;
             }
+        }
+
+        // ── Dúvidas e Cuidados (FAQ) ──
+        if (currentState === 'AI_CHATTING') {
+            if (incomingText === '0') {
+                await setState({ state: 'START' });
+                // Re-trigger start message logic roughly
+                let welcome = config.messages?.welcome || `Bem-vindo à ${config.name}!`;
+                await sendMsg(formatMsg(welcome, { empresa: config.name, servicos_extra: config.welcomeExtra }));
+                await setState({ state: 'MENU' });
+                return;
+            }
+
+            // Simple FAQ keyword matching
+            let bestMatch = null;
+            let highestScore = 0;
+            const faqs = config.faq || [];
+            
+            if (faqs.length > 0) {
+                const userWords = incomingText.toLowerCase().split(/\s+/);
+                
+                faqs.forEach(faq => {
+                    const qWords = faq.question.toLowerCase().split(/\s+/);
+                    let score = 0;
+                    userWords.forEach(uw => {
+                        if (uw.length > 3 && faq.question.toLowerCase().includes(uw)) score++;
+                    });
+                    if (score > highestScore) {
+                        highestScore = score;
+                        bestMatch = faq;
+                    }
+                });
+            }
+
+            if (bestMatch && highestScore > 0) {
+                await sendMsg(`${bestMatch.answer}\n\n${SEPARATOR}\n_Mais alguma dúvida? Digite ou envie *0* para voltar._`);
+            } else {
+                await sendMsg(`Poxa, não entendi muito bem. Você pode tentar perguntar de outra forma ou enviar *0* para voltar ao menu.`);
+            }
+            return;
         }
 
         // ── Aguardando atendimento humano — silêncio ──

@@ -58,6 +58,256 @@
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         }
 
+        .login-card h1 {
+            margin-bottom: 2rem;
+            font-size: 2rem;
+            background: linear-gradient(to right, #818cf8, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        input {
+            width: 100%;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(15, 23, 42, 0.5);
+            color: white;
+            margin-bottom: 1.5rem;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            border-color: var(--primary);
+        }
+
+        button {
+            width: 100%;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            border: none;
+            background: var(--primary);
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: var(--primary-hover);
+            transform: translateY(-2px);
+        }
+
+        /* Sidebar */
+        aside {
+            width: 280px;
+            background: rgba(15, 23, 42, 0.5);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            flex-direction: column;
+            padding: 2rem;
+            height: 100vh;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 3rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .nav-item {
+            padding: 1rem;
+            border-radius: 0.75rem;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: var(--text-dim);
+        }
+
+        .nav-item:hover, .nav-item.active {
+            background: rgba(99, 102, 241, 0.1);
+            color: white;
+        }
+
+        /* Main Content */
+        main {
+            flex: 1;
+            padding: 3rem;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 3rem;
+        }
+
+        /* Circuit Trace Background */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 2.5rem; /* Aumentado para dar espaço aos fios */
+            position: relative;
+            padding: 2rem;
+            background-image: 
+                radial-gradient(circle at 2px 2px, rgba(99, 102, 241, 0.05) 1px, transparent 0);
+            background-size: 30px 30px;
+        }
+
+        /* Os "Fios" entre os cartões */
+        .instance-card::after {
+            content: '';
+            position: absolute;
+            top: 40px;
+            right: -2.5rem;
+            width: 2.5rem;
+            height: 100px;
+            border-top: 2px solid #333;
+            border-right: 2px solid #333;
+            z-index: -1;
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        /* Efeito de Fluxo (Data Flow) nos Fios */
+        .instance-card .flow-line {
+            position: absolute;
+            top: 40px;
+            right: -2.5rem;
+            width: 2.5rem;
+            height: 100px;
+            z-index: -1;
+            pointer-events: none;
+            overflow: visible;
+        }
+
+        .trace-flow {
+            stroke-width: 2;
+            fill: none;
+            stroke-dasharray: 20 100;
+            stroke-dashoffset: 120;
+            filter: drop-shadow(0 0 5px var(--primary));
+            animation: flow-anim 3s linear infinite;
+        }
+
+        @keyframes flow-anim {
+            to { stroke-dashoffset: 0; }
+        }
+
+        .instance-card {
+            background: var(--card-bg);
+            border-radius: 1rem;
+            padding: 1.25rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            backdrop-filter: blur(10px);
+        }
+
+        /* Pinos do Chip nos Cartões */
+        .instance-card::before {
+            content: '';
+            position: absolute;
+            left: -8px;
+            top: 20px;
+            height: 60px;
+            width: 8px;
+            background: repeating-linear-gradient(
+                to bottom,
+                #555,
+                #555 10px,
+                transparent 10px,
+                transparent 15px
+            );
+            border-radius: 2px;
+        }
+
+        .instance-card {
+            background: var(--card-bg);
+            border-radius: 1.25rem;
+            padding: 1.25rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: transform 0.3s, box-shadow 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .instance-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+            border-color: rgba(99, 102, 241, 0.3);
+        }
+
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-online { background: rgba(34, 197, 94, 0.1); color: var(--success); }
+        .status-connected { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid var(--success); }
+        .status-waiting { background: rgba(245, 158, 11, 0.2); color: var(--warning); border: 1px solid var(--warning); }
+        .status-disconnected { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+        .status-stopped { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+
+        .instance-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1.5rem;
+        }
+
+        .instance-info h3 { font-size: 1.1rem; margin-bottom: 0.15rem; }
+        .instance-info span { color: var(--text-dim); font-size: 0.75rem; }
+
+        .metrics {
+            display: flex;
+            gap: 1.25rem;
+            margin: 1rem 0;
+            padding: 0.75rem 0;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .metric { display: flex; flex-direction: column; gap: 0.25rem; }
+        .metric label { font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; }
+        .metric value { font-weight: 600; }
+
+        .actions {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .btn-icon {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .btn-icon:hover { background: rgba(255, 255, 255, 0.1); transform: scale(1.1); }
+        .btn-icon.play:hover { color: var(--success); border-color: var(--success); }
+        .btn-icon.stop:hover { color: var(--danger); border-color: var(--danger); }
+        .btn-icon.refresh:hover { color: var(--primary); border-color: var(--primary); }
+
         /* Circuit Loader Styles */
         #circuit-loader {
             position: fixed;
@@ -89,6 +339,7 @@
         #modal-edit .login-card {
             max-width: 500px;
             padding: 1.5rem;
+            text-align: left;
         }
 
         #modal-edit input {
@@ -96,6 +347,15 @@
             margin-bottom: 1rem;
             font-size: 0.875rem;
         }
+
+        /* Animations */
+        @keyframes pulse {
+            0% { opacity: 0.5; }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+
+        .pulse { animation: pulse 2s infinite; }
     </style>
 </head>
 <body>
@@ -183,6 +443,10 @@
             <i class="fas fa-history"></i>
             <span>Logs Master</span>
         </div>
+        <div class="nav-item" onclick="switchView('messages', this)">
+            <i class="fas fa-comment-dots"></i>
+            <span>Mensagens e FAQ</span>
+        </div>
         <div style="margin-top: auto;">
             <div class="nav-item" onclick="logout()">
                 <i class="fas fa-sign-out-alt"></i>
@@ -249,6 +513,50 @@
                 </div>
                 <div id="log-container" style="font-family: 'Courier New', Courier, monospace; font-size: 0.875rem; color: #0f0; height: 500px; overflow-y: auto; padding: 1rem; line-height: 1.5;">
                     > Aguardando logs...
+                </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="view-messages" style="display: none;">
+            <div class="instance-card" style="width: 100%; max-width: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+                    <h2>Editor de Mensagens e Respostas</h2>
+                    <select id="msg-instance-select" style="padding: 0.5rem 1rem; border-radius: 0.5rem; background: var(--card-bg); color: white; border: 1px solid rgba(255,255,255,0.1); width: 250px;" onchange="loadInstanceMessages()">
+                        <option value="">Selecione a Instância...</option>
+                    </select>
+                </div>
+
+                <div id="msg-editor-container" style="display: none;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                        <!-- Mensagens Fixas -->
+                        <div>
+                            <h3 style="color: var(--primary); margin-bottom: 1rem;">Mensagens Padrão</h3>
+                            
+                            <div style="margin-bottom: 1rem;">
+                                <label style="font-size: 0.75rem; color: var(--text-dim); display: block; margin-bottom: 0.5rem;">MENSAGEM DE BOAS-VINDAS</label>
+                                <textarea id="msg-welcome" style="width: 100%; height: 100px; padding: 0.75rem; border-radius: 0.75rem; border: 1px solid rgba(255,255,255,0.1); background: rgba(15,23,42,0.5); color: white; resize: vertical;"></textarea>
+                            </div>
+
+                            <div style="margin-bottom: 1rem;">
+                                <label style="font-size: 0.75rem; color: var(--text-dim); display: block; margin-bottom: 0.5rem;">AGENDAMENTO CONFIRMADO</label>
+                                <textarea id="msg-confirmed" style="width: 100%; height: 100px; padding: 0.75rem; border-radius: 0.75rem; border: 1px solid rgba(255,255,255,0.1); background: rgba(15,23,42,0.5); color: white; resize: vertical;"></textarea>
+                            </div>
+                        </div>
+
+                        <!-- FAQ / Respostas -->
+                        <div>
+                            <h3 style="color: var(--primary); margin-bottom: 1rem;">Perguntas e Respostas (FAQ)</h3>
+                            <div id="faq-container" style="display: flex; flex-direction: column; gap: 1rem;">
+                                <!-- FAQ items injected here -->
+                            </div>
+                            <button style="margin-top: 1rem; background: transparent; border: 1px dashed var(--primary); color: var(--primary);" onclick="addFaqItem()">+ Adicionar Nova Resposta</button>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem; display: flex; justify-content: flex-end;">
+                        <button style="width: auto; padding: 0.75rem 2rem; font-size: 1rem;" onclick="saveMessages()">Salvar Configurações</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -341,6 +649,117 @@
 
             if (view === 'settings') renderSettings();
             if (view === 'logs') loadLogs();
+            if (view === 'messages') renderMessagesSelect();
+        }
+
+        function renderMessagesSelect() {
+            const select = document.getElementById('msg-instance-select');
+            select.innerHTML = '<option value="">Selecione a Instância...</option>';
+            instancesData.forEach(inst => {
+                select.innerHTML += \`<option value="\${inst.slug}">\${inst.name} (\${inst.slug})</option>\`;
+            });
+            document.getElementById('msg-editor-container').style.display = 'none';
+        }
+
+        let currentFaqItems = [];
+
+        function loadInstanceMessages() {
+            const slug = document.getElementById('msg-instance-select').value;
+            if (!slug) {
+                document.getElementById('msg-editor-container').style.display = 'none';
+                return;
+            }
+            
+            const inst = instancesData.find(i => i.slug === slug);
+            if (!inst) return;
+
+            document.getElementById('msg-editor-container').style.display = 'block';
+
+            const msgs = inst.messages || {};
+            document.getElementById('msg-welcome').value = msgs.welcome || '';
+            document.getElementById('msg-confirmed').value = msgs.appointmentConfirmed || '';
+
+            currentFaqItems = inst.faq || [];
+            renderFaqItems();
+        }
+
+        function renderFaqItems() {
+            const container = document.getElementById('faq-container');
+            container.innerHTML = '';
+            
+            if (currentFaqItems.length === 0) {
+                container.innerHTML = '<p style="color: var(--text-dim); font-size: 0.875rem;">Nenhuma resposta cadastrada.</p>';
+                return;
+            }
+
+            currentFaqItems.forEach((faq, index) => {
+                const div = document.createElement('div');
+                div.style.background = 'rgba(0,0,0,0.2)';
+                div.style.padding = '1rem';
+                div.style.borderRadius = '0.5rem';
+                div.style.border = '1px solid rgba(255,255,255,0.05)';
+                div.style.position = 'relative';
+
+                div.innerHTML = \`
+                    <div style="position: absolute; top: 0.5rem; right: 0.5rem; cursor: pointer; color: var(--danger);" onclick="removeFaqItem(\${index})">
+                        <i class="fas fa-trash"></i>
+                    </div>
+                    <label style="font-size: 0.7rem; color: var(--text-dim); margin-bottom: 0.25rem; display: block;">PERGUNTA/GATILHO</label>
+                    <input type="text" value="\${faq.question}" onchange="updateFaqItem(\${index}, 'question', this.value)" style="margin-bottom: 0.5rem; padding: 0.5rem; font-size: 0.875rem;" placeholder="Ex: Qual o endereço?">
+                    
+                    <label style="font-size: 0.7rem; color: var(--text-dim); margin-bottom: 0.25rem; display: block;">RESPOSTA</label>
+                    <textarea onchange="updateFaqItem(\${index}, 'answer', this.value)" style="width: 100%; height: 60px; padding: 0.5rem; border-radius: 0.5rem; border: 1px solid rgba(255,255,255,0.1); background: rgba(15,23,42,0.5); color: white; resize: vertical; font-size: 0.875rem;" placeholder="Ex: Estamos na Rua X... ">\${faq.answer}</textarea>
+                \`;
+                container.appendChild(div);
+            });
+        }
+
+        function addFaqItem() {
+            currentFaqItems.push({ question: '', answer: '' });
+            renderFaqItems();
+        }
+
+        function removeFaqItem(index) {
+            currentFaqItems.splice(index, 1);
+            renderFaqItems();
+        }
+
+        function updateFaqItem(index, field, value) {
+            currentFaqItems[index][field] = value;
+        }
+
+        async function saveMessages() {
+            const slug = document.getElementById('msg-instance-select').value;
+            const inst = instancesData.find(i => i.slug === slug);
+            if (!inst) return;
+
+            const updatedInst = {
+                ...inst,
+                messages: {
+                    ...(inst.messages || {}),
+                    welcome: document.getElementById('msg-welcome').value,
+                    appointmentConfirmed: document.getElementById('msg-confirmed').value
+                },
+                faq: currentFaqItems
+            };
+
+            toggleLoader(true);
+            const res = await fetch('/api/instances/save', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': \`Bearer \${token}\`
+                },
+                body: JSON.stringify(updatedInst)
+            });
+            toggleLoader(false);
+
+            if (res.ok) {
+                alert('Mensagens salvas com sucesso!');
+                loadInstances();
+            } else {
+                alert('Erro ao salvar mensagens!');
+            }
         }
 
         async function loadInstances() {
@@ -446,6 +865,11 @@
                 card.className = 'instance-card';
                 const whatsappStatusClass = inst.whatsappStatus === 'conectado' ? 'status-connected' : (inst.whatsappStatus === 'aguardando qr' ? 'status-waiting' : 'status-disconnected');
                 card.innerHTML = `
+                    <div class="flow-line">
+                        <svg width="100%" height="100%" viewBox="0 0 40 100" preserveAspectRatio="none">
+                            <path d="M0 0 H40 V100" class="trace-flow" style="stroke: var(--primary);" />
+                        </svg>
+                    </div>
                     <div class="instance-header">
                         <div class="instance-info">
                             <h3>${inst.name}</h3>

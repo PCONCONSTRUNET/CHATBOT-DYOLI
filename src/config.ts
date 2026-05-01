@@ -50,6 +50,12 @@ export interface InstanceConfig {
         reminder1h?: string;
         paymentConfirmed?: string;
     };
+
+    // Perguntas e Respostas Extras (FAQ)
+    faq?: {
+        question: string;
+        answer: string;
+    }[];
 }
 
 /**
@@ -128,6 +134,7 @@ export async function loadConfigFromDb(slug: string): Promise<InstanceConfig> {
         misticClientSecret: data.mistic_client_secret,
         mercadopagoAccessToken: data.mercadopago_access_token,
         messages: data.messages,
+        faq: data.faq,
         reminder24h: data.reminder24h,
         reminder1h: data.reminder1h,
         sessionFolder: data.session_folder || `sessions/${data.slug}`
@@ -168,6 +175,7 @@ export async function loadAllInstancesFromDb(): Promise<InstanceConfig[]> {
         misticClientSecret: inst.mistic_client_secret,
         mercadopagoAccessToken: inst.mercadopago_access_token,
         messages: inst.messages,
+        faq: inst.faq,
         reminder24h: inst.reminder24h,
         reminder1h: inst.reminder1h,
         sessionFolder: inst.session_folder || `sessions/${inst.slug}`
