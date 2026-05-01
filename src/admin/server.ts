@@ -1,7 +1,9 @@
 import express from 'express';
 import fs from 'fs';
 import { createClient } from '@supabase/supabase-js';
-import pm2 from 'pm2';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const pm2 = require('pm2');
 import jwt from 'jsonwebtoken';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -20,6 +22,10 @@ const JWT_SECRET = process.env.JWT_SECRET!;
 const supabase = createClient(MASTER_URL, MASTER_KEY);
 
 app.use(express.json());
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Middleware de Autenticação
@@ -161,16 +167,24 @@ app.get('/api/logs', authenticate, (req, res) => {
 app.post('/api/instances/save', authenticate, async (req, res) => {
     try {
         const inst = req.body;
+        
+        // Remove campos temporários do PM2/Frontend que não existem na tabela
+        const { 
+            status, whatsappStatus, memory, cpu, uptime, 
+            ...cleanInst 
+        } = inst;
+
         const { error } = await supabase
             .from('instances')
             .upsert({
-                ...inst,
+                ...cleanInst,
                 updated_at: new Date().toISOString()
             }, { onConflict: 'slug' });
 
         if (error) throw error;
         res.json({ success: true });
     } catch (err: any) {
+        console.error('Erro ao salvar instância:', err);
         res.status(500).json({ error: err.message });
     }
 });

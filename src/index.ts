@@ -108,6 +108,98 @@ app.post('/webhook/notificacao', authMiddleware, async (req: any, res: any) => {
     }
 });
 
+app.post('/webhook/mercadopago', async (req: any, res: any) => {
+    try {
+        const paymentId = req.query?.['data.id'] || req.query?.data?.id || req.body?.data?.id;
+        if (!paymentId) return res.status(200).send('No ID');
+
+        console.log(`[💸 ${config.id}] Webhook Mercado Pago recebido. Payment ID: ${paymentId}`);
+
+        if (!config.mercadopagoAccessToken) {
+            console.log(`[💸 ${config.id}] Ignorado: Sem token do Mercado Pago configurado.`);
+            return res.status(200).send('No Token Configured');
+        }
+
+        const { MercadoPagoConfig, Payment } = await import('mercadopago');
+        const clientMP = new MercadoPagoConfig({ accessToken: config.mercadopagoAccessToken });
+        const payment = new Payment(clientMP);
+
+        const paymentData = await payment.get({ id: paymentId });
+        
+        if (paymentData.status === 'approved') {
+            const extRef = paymentData.external_reference;
+            
+            if (extRef && extRef.startsWith('AGEN_')) {
+                // Buscar o agendamento
+                const { data: appt, error } = await masterSupabase
+                    .from('appointments')
+                    .select('*')
+                    .eq('external_reference', extRef)
+                    .single();
+
+                if (appt && appt.status === 'pendente') {
+                    // Atualizar para confirmado
+                    await masterSupabase
+                        .from('appointments')
+                        .update({ status: 'confirmado' })
+                        .eq('id', appt.id);
+
+                    // Enviar msg de sucesso
+                    const whatsapp = appt.customer_whatsapp;
+                    // Formatar número
+                    let tel = whatsapp.replace(/\D/g, '');
+                    if (tel.length === 10 || tel.length === 11) tel = '55' + tel;
+                    const jid = tel.includes('@') ? tel : `${tel}@s.whatsapp.net`;
+
+                    const dataBR = appt.date.split('-').reverse().join('/');
+                    const msgSucesso = `✅ *PAGAMENTO APROVADO E AGENDAMENTO CONFIRMADO!*\n\n${SEPARATOR}\n\n` +
+                        `Tudo certo, *${appt.customer_name}*!\nSeu pagamento de R$ ${parseFloat(appt.amount).toFixed(2).replace('.',',')} foi aprovado e seu horário está garantido!\n\n` +
+                        `📅 *Data:* ${dataBR}\n🕐 *Horário:* ${appt.time}\n\n` +
+                        `${SEPARATOR}\n_Te esperamos no estúdio! ✨_`;
+
+                    if (globalSock && globalSock.sendWithTyping) {
+                        await globalSock.sendWithTyping(jid, { text: msgSucesso });
+                    } else if (globalSock && globalSock.sendMessage) {
+                        await globalSock.sendMessage(jid, { text: msgSucesso });
+                    }
+
+                    // Limpar o state para a pessoa
+                    await savePersistentState(jid, { state: 'START' });
+                } else if (!appt) {
+                    // Tenta na base especifica se a master nao tiver (fallback pra estrutura antiga)
+                    const { data: localAppt } = await supabase
+                        .from('appointments')
+                        .select('*')
+                        .eq('external_reference', extRef)
+                        .single();
+
+                    if (localAppt && localAppt.status === 'pendente') {
+                        await supabase.from('appointments').update({ status: 'confirmado' }).eq('id', localAppt.id);
+                        const whatsapp = localAppt.customer_whatsapp;
+                        let tel = whatsapp.replace(/\D/g, '');
+                        if (tel.length === 10 || tel.length === 11) tel = '55' + tel;
+                        const jid = tel.includes('@') ? tel : `${tel}@s.whatsapp.net`;
+
+                        const dataBR = localAppt.date.split('-').reverse().join('/');
+                        const msgSucesso = `✅ *PAGAMENTO APROVADO E AGENDAMENTO CONFIRMADO!*\n\n${SEPARATOR}\n\n` +
+                            `Tudo certo, *${localAppt.customer_name}*!\nSeu pagamento de R$ ${parseFloat(localAppt.amount).toFixed(2).replace('.',',')} foi aprovado e seu horário está garantido!\n\n` +
+                            `📅 *Data:* ${dataBR}\n🕐 *Horário:* ${localAppt.time}\n\n` +
+                            `${SEPARATOR}\n_Te esperamos no estúdio! ✨_`;
+
+                        if (globalSock?.sendWithTyping) await globalSock.sendWithTyping(jid, { text: msgSucesso });
+                        await savePersistentState(jid, { state: 'START' });
+                    }
+                }
+            }
+        }
+
+        res.status(200).send('OK');
+    } catch (err) {
+        console.error("Erro MP Webhook:", err);
+        res.status(500).send('Error');
+    }
+});
+
 const processedMessages = new Set<string>();
 
 async function getPersistentState(remoteJid: string) {
@@ -159,7 +251,7 @@ async function connectToWhatsApp() {
             await sock.sendPresenceUpdate('composing', jid);
             
             const text = content.text || '';
-            const typingTime = Math.max(2000, Math.min(text.length * 50, 4000));
+            const typingTime = Math.max(3000, Math.min(text.length * 50, 6000));
             await delay(typingTime);
             
             await sock.sendPresenceUpdate('paused', jid);
@@ -283,6 +375,30 @@ async function connectToWhatsApp() {
 
         // ── MENU PRINCIPAL ──
         if (currentState === 'MENU') {
+            // Verifica se há um menu dinâmico configurado
+            const menuItems = config.menu || [];
+            const dynamicItem = menuItems.find(item => item.key === incomingText);
+
+            if (dynamicItem) {
+                switch (dynamicItem.action) {
+                    case 'schedule': incomingText = '2'; break;
+                    case 'appointments': incomingText = '3'; break;
+                    case 'human': incomingText = '4'; break;
+                    case 'faq': incomingText = '5'; break;
+                    case 'link': {
+                        const url = dynamicItem.value || config.websiteUrl;
+                        await sendMsg(`Clique no link abaixo para acessar:\n\n${url}`);
+                        await setState({ state: 'START' });
+                        return;
+                    }
+                    case 'text': {
+                        await sendMsg(dynamicItem.value || 'Opção selecionada.');
+                        await setState({ state: 'START' });
+                        return;
+                    }
+                }
+            }
+
             switch (incomingText) {
                 case '1': { // Agendar pelo site
                     await sendMsg(
@@ -354,6 +470,12 @@ async function connectToWhatsApp() {
                             const precoFormatado = parseFloat(valor).toFixed(2).replace('.', ',');
                             listMsg += `*${i+1}.* ${nome} — R$ ${precoFormatado}\n`;
                         });
+
+                        // Adição especial para Dyoli
+                        if (config.id === 'dyoli') {
+                            listMsg += `*${servicos.length + 1}.* 💅 Unhas (Zelia Kad)\n`;
+                        }
+
                         listMsg += `\n${SEPARATOR}\n_Digite o número do procedimento ou *0* para voltar._`;
                         await setState({ state: 'SELECT_SERVICE', servicos });
                         await sendMsg(listMsg);
@@ -421,8 +543,18 @@ async function connectToWhatsApp() {
         // ── ETAPA 1: Escolha do serviço ──
         if (currentState === 'SELECT_SERVICE') {
             if (incomingText === '0') { await setState({ state: 'START' }); return; }
+            
+            const servicos = rawState.servicos || [];
+
+            // Caso especial: Unhas para Dyoli
+            if (config.id === 'dyoli' && (incomingText === (servicos.length + 1).toString() || incomingText === '1.' + (servicos.length + 1))) {
+                await sendMsg(`💅 *UNHAS - Zelia Kad*\n\nPara agendar serviços de unhas, por favor entre em contato diretamente com a Zelia no link abaixo:\n\nhttps://wa.me/554899171918?text=Olá,%20vi%20no%20bot%20da%20Dyoli%20e%20gostaria%20de%20agendar%20unhas.`);
+                await setState({ state: 'START' });
+                return;
+            }
+
             const idx = parseInt(incomingText) - 1;
-            const servico = rawState.servicos?.[idx];
+            const servico = servicos[idx];
             if (!servico) {
                 await sendMsg('Serviço inválido. Digite o número da opção ou *0* para voltar.');
                 return;
@@ -597,10 +729,9 @@ async function connectToWhatsApp() {
                 `🎨 *Serviço:* ${nome}\n` +
                 `📅 *Data:* ${rawState.dataBR}\n` +
                 `🕐 *Horário:* ${hora}\n` +
-                `💰 *Valor:* R$ ${preco}\n` +
-                `💵 *Pagamento:* Na recepção\n\n` +
+                `💰 *Valor:* R$ ${preco}\n\n` +
                 `${SEPARATOR}\n\n` +
-                `Para confirmar, me diga seu *nome completo*:\n` +
+                `Para prosseguir, me diga seu *nome completo*:\n` +
                 `_(ou *0* para cancelar)_`
             );
 
@@ -608,7 +739,7 @@ async function connectToWhatsApp() {
             return;
         }
 
-        // ── ETAPA 4: Coleta nome e cria o agendamento ──
+        // ── ETAPA 4: Coleta nome e pergunta forma de pagamento ──
         if (currentState === 'GET_NAME') {
             if (incomingText === '0') { await setState({ state: 'START' }); return; }
 
@@ -620,22 +751,41 @@ async function connectToWhatsApp() {
                 return;
             }
 
-            await sendMsg(`Processando seu agendamento, aguarde... ⏳`);
+            const valorTotal = parseFloat(servico.preco || servico.price || 0);
+            const sinal = (valorTotal * 0.2).toFixed(2).replace('.', ',');
+            const total = valorTotal.toFixed(2).replace('.', ',');
 
-            try {
-                const whatsapp = userPhone;
+            await sendMsg(
+                `Ótimo, ${nome}! Para confirmar sua vaga, precisamos que você realize o pagamento via PIX.\n\n` +
+                `Como você prefere pagar?\n\n` +
+                `*1.* Sinal de 20% (R$ ${sinal}) e o restante no dia.\n` +
+                `*2.* Valor Total (R$ ${total}).\n\n` +
+                `_Digite *1* ou *2*, ou *0* para cancelar._`
+            );
+
+            await setState({ ...rawState, state: 'SELECT_PAYMENT_TYPE', nome });
+            return;
+        }
+
+        // ── ETAPA 5: Seleciona pagamento e gera PIX ──
+        if (currentState === 'SELECT_PAYMENT_TYPE') {
+            if (incomingText === '0') { await setState({ state: 'START' }); return; }
+
+            if (incomingText !== '1' && incomingText !== '2') {
+                await sendMsg('Por favor, digite *1* para Sinal (20%) ou *2* para Valor Total.');
+                return;
+            }
+
+            const { servico, dataISO, dataBR, hora, nome } = rawState;
+            const valorTotal = parseFloat(servico.preco || servico.price || 0);
+            const valorCobrado = incomingText === '1' ? valorTotal * 0.2 : valorTotal;
+
+            if (!config.mercadopagoAccessToken) {
+                await sendMsg("⚠️ Este estúdio ainda não configurou os pagamentos online. Seu agendamento será concluído com pagamento no local.");
                 
+                // Concluir igual antes sem pagar se não tiver token
                 try {
-                    await lovable.agendar({
-                        whatsapp,
-                        nome,
-                        servico_id: servico.id,
-                        data: dataISO,
-                        horario: hora,
-                        forma_pagamento: 'recepcao'
-                    });
-                } catch (fnErr) {
-                    console.log('Função bot-agendar falhou, inserindo direto no banco...');
+                    const whatsapp = userPhone;
                     const { error: dbErr } = await (sock as any).supabase
                         .from('appointments')
                         .insert([{
@@ -646,35 +796,97 @@ async function connectToWhatsApp() {
                             time: hora,
                             status: 'confirmado',
                             payment_method: 'recepcao',
-                            amount: servico.preco || servico.price || 0,
-                            total_amount: servico.preco || servico.price || 0
+                            amount: valorCobrado,
+                            total_amount: valorTotal
                         }]);
-                    
-                    if (dbErr) throw dbErr;
-                }
 
-                const msgSucesso = formatMsg(config.messages?.appointmentConfirmed || 
-                    `✅ *AGENDAMENTO CONFIRMADO!*\n\n${SEPARATOR}\n\n` +
-                    `Tudo certo, *{NOME}*!\nSeu horário está reservado:\n\n` +
-                    `✂️ *Serviço:* {SERVICO}\n📅 *Data:* {DATA}\n🕐 *Horário:* {HORA}\n💰 *Valor:* R$ {VALOR}\n\n` +
-                    `${SEPARATOR}\n_Te esperamos no estúdio! ✨_`, {
-                    nome,
-                    cliente: nome,
-                    servico: servico.nome || servico.name,
-                    data: dataBR,
-                    hora: hora,
-                    valor: parseFloat(servico.preco || servico.price || 0).toFixed(2).replace('.', ',')
+                    const msgSucesso = `✅ *AGENDAMENTO CONFIRMADO!*\n\n${SEPARATOR}\n\n` +
+                        `Tudo certo, *${nome}*!\nSeu horário está reservado:\n\n` +
+                        `✂️ *Serviço:* ${servico.nome || servico.name}\n📅 *Data:* ${dataBR}\n🕐 *Horário:* ${hora}\n💰 *Valor:* R$ ${valorTotal.toFixed(2).replace('.', ',')}\n\n` +
+                        `${SEPARATOR}\n_Te esperamos no estúdio! ✨_`;
+
+                    await sendMsg(msgSucesso);
+                    await setState({ state: 'START' });
+                } catch (e) {
+                    await sendMsg('Erro ao finalizar agendamento. Tente novamente.');
+                    await setState({ state: 'START' });
+                }
+                return;
+            }
+
+            await sendMsg(`Gerando seu PIX Copia e Cola no valor de *R$ ${valorCobrado.toFixed(2).replace('.', ',')}*... Aguarde ⏳`);
+
+            try {
+                const { MercadoPagoConfig, Payment } = await import('mercadopago');
+                const clientMP = new MercadoPagoConfig({ accessToken: config.mercadopagoAccessToken });
+                const payment = new Payment(clientMP);
+
+                const external_reference = `AGEN_${config.id}_${Date.now()}`;
+
+                const resposta = await payment.create({
+                    body: {
+                        transaction_amount: Number(valorCobrado.toFixed(2)),
+                        description: `Agendamento: ${servico.nome || servico.name} - ${nome}`,
+                        payment_method_id: 'pix',
+                        external_reference,
+                        payer: { email: 'cliente@bot.com' }
+                    }
                 });
 
-                await sendMsg(msgSucesso);
-                await setState({ state: 'START' });
-                return;
+                const copiaECola = resposta.point_of_interaction?.transaction_data?.qr_code;
+
+                await sendMsg(
+                    `✅ PIX Gerado com sucesso!\n\n` +
+                    `Copie o código abaixo e cole no seu banco (PIX Copia e Cola) para realizar o pagamento. ` +
+                    `Assim que for confirmado, seu agendamento será efetivado automaticamente.\n\n` +
+                    `_Você tem 10 minutos para pagar. Se desistir, digite *0*._`
+                );
+                
+                if (copiaECola) {
+                    await sendMsg(copiaECola);
+                }
+
+                // Salvar agendamento como pendente
+                const whatsapp = userPhone;
+                // Tenta salvar na master, senao vai na local
+                const apptData = {
+                    customer_whatsapp: whatsapp,
+                    customer_name: nome,
+                    service_id: servico.id,
+                    date: dataISO,
+                    time: hora,
+                    status: 'pendente', // IMPORTANTE
+                    payment_method: 'pix',
+                    amount: valorCobrado,
+                    total_amount: valorTotal,
+                    external_reference: external_reference
+                };
+
+                const { error: dbErr } = await masterSupabase.from('appointments').insert([apptData]);
+                if (dbErr) {
+                    // Fallback se não tiver master (pra instâncias não migradas)
+                    await (sock as any).supabase.from('appointments').insert([apptData]);
+                }
+
+                await setState({ ...rawState, state: 'AWAITING_PAYMENT', payment_id: resposta.id, external_reference, valorPagamento: valorCobrado });
+
             } catch (err) {
-                console.error('Erro ao agendar:', err);
-                await sendMsg('Desculpe, ocorreu um erro ao finalizar seu agendamento. Por favor, tente novamente mais tarde ou fale com um atendente.');
+                console.error("Erro PIX Mercado Pago:", err);
+                await sendMsg("Desculpe, ocorreu um erro ao gerar o PIX. Tente novamente mais tarde.");
+                await setState({ state: 'START' });
+            }
+            return;
+        }
+
+        // ── ETAPA 6: Aguardando Pagamento ──
+        if (currentState === 'AWAITING_PAYMENT') {
+            if (incomingText === '0') {
+                await sendMsg("Agendamento cancelado com sucesso.");
                 await setState({ state: 'START' });
                 return;
             }
+            await sendMsg("⏳ Estamos aguardando a confirmação do seu pagamento.\nSe já pagou, o sistema confirmará automaticamente em alguns instantes.\n\nPara cancelar o agendamento, digite *0*.");
+            return;
         }
 
         // ── Dúvidas e Cuidados (FAQ) ──

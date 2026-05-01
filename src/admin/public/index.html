@@ -551,6 +551,13 @@
                                 <!-- FAQ items injected here -->
                             </div>
                             <button style="margin-top: 1rem; background: transparent; border: 1px dashed var(--primary); color: var(--primary);" onclick="addFaqItem()">+ Adicionar Nova Resposta</button>
+                            
+                            <h3 style="color: var(--primary); margin-top: 3rem; margin-bottom: 1rem;">Menu de Opções (Boas-vindas)</h3>
+                            <p style="font-size: 0.75rem; color: var(--text-dim); margin-bottom: 1rem;">Configure as opções numéricas que o bot apresenta inicialmente.</p>
+                            <div id="menu-container" style="display: flex; flex-direction: column; gap: 1rem;">
+                                <!-- Menu items injected here -->
+                            </div>
+                            <button style="margin-top: 1rem; background: transparent; border: 1px dashed var(--primary); color: var(--primary);" onclick="addMenuItem()">+ Adicionar Nova Opção</button>
                         </div>
                     </div>
 
@@ -583,12 +590,30 @@
                         <input type="text" id="edit-website" placeholder="https://...">
                     </div>
                 </div>
-                <label style="font-size: 0.7rem; color: var(--text-dim);">SUPABASE URL</label>
-                <input type="text" id="edit-supa-url">
-                <label style="font-size: 0.7rem; color: var(--text-dim);">SUPABASE KEY</label>
-                <input type="text" id="edit-supa-key">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 0.75rem;">
+                    <div>
+                        <label style="font-size: 0.7rem; color: var(--text-dim);">SUPABASE URL</label>
+                        <input type="text" id="edit-supa-url">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.7rem; color: var(--text-dim);">SUPABASE KEY</label>
+                        <input type="text" id="edit-supa-key">
+                    </div>
+                </div>
+                <div style="margin-top: 0.75rem;">
+                    <label style="font-size: 0.7rem; color: var(--text-dim);">MERCADO PAGO ACCESS TOKEN</label>
+                    <input type="text" id="edit-mp-token" placeholder="APP_USR-...">
+                </div>
+                <div style="margin-top: 0.5rem; background: rgba(99, 102, 241, 0.1); padding: 0.75rem; border-radius: 0.5rem; border: 1px solid rgba(99, 102, 241, 0.2);">
+                    <label style="font-size: 0.7rem; color: var(--text-dim);">URL DO WEBHOOK MERCADO PAGO</label>
+                    <div style="display: flex; gap: 0.5rem; align-items: center; margin-top: 0.25rem;">
+                        <input type="text" id="edit-webhook-url" readonly style="margin-bottom: 0; background: rgba(0,0,0,0.3); font-family: monospace; font-size: 0.75rem; color: var(--primary);">
+                        <button style="width: auto; padding: 0.75rem; border-radius: 0.5rem;" onclick="copyWebhook()" type="button" title="Copiar URL"><i class="fas fa-copy"></i></button>
+                    </div>
+                    <p style="font-size: 0.65rem; color: var(--text-dim); margin-top: 0.25rem;">Cole esta URL no painel de Webhooks do Mercado Pago para esta instância.</p>
+                </div>
                 
-                <div style="display: flex; gap: 1rem; margin-top: 0.5rem;">
+                <div style="display: flex; gap: 1rem; margin-top: 1rem;">
                     <button style="background: var(--card-bg);" onclick="closeModal()">Cancelar</button>
                     <button onclick="saveInstance()">Salvar Alterações</button>
                 </div>
@@ -656,12 +681,13 @@
             const select = document.getElementById('msg-instance-select');
             select.innerHTML = '<option value="">Selecione a Instância...</option>';
             instancesData.forEach(inst => {
-                select.innerHTML += \`<option value="\${inst.slug}">\${inst.name} (\${inst.slug})</option>\`;
+                select.innerHTML += `<option value="${inst.slug}">${inst.name} (${inst.slug})</option>`;
             });
             document.getElementById('msg-editor-container').style.display = 'none';
         }
 
         let currentFaqItems = [];
+        let currentMenuItems = [];
 
         function loadInstanceMessages() {
             const slug = document.getElementById('msg-instance-select').value;
@@ -680,7 +706,9 @@
             document.getElementById('msg-confirmed').value = msgs.appointmentConfirmed || '';
 
             currentFaqItems = inst.faq || [];
+            currentMenuItems = inst.menu || [];
             renderFaqItems();
+            renderMenuItems();
         }
 
         function renderFaqItems() {
@@ -700,16 +728,16 @@
                 div.style.border = '1px solid rgba(255,255,255,0.05)';
                 div.style.position = 'relative';
 
-                div.innerHTML = \`
-                    <div style="position: absolute; top: 0.5rem; right: 0.5rem; cursor: pointer; color: var(--danger);" onclick="removeFaqItem(\${index})">
+                div.innerHTML = `
+                    <div style="position: absolute; top: 0.5rem; right: 0.5rem; cursor: pointer; color: var(--danger);" onclick="removeFaqItem(${index})">
                         <i class="fas fa-trash"></i>
                     </div>
                     <label style="font-size: 0.7rem; color: var(--text-dim); margin-bottom: 0.25rem; display: block;">PERGUNTA/GATILHO</label>
-                    <input type="text" value="\${faq.question}" onchange="updateFaqItem(\${index}, 'question', this.value)" style="margin-bottom: 0.5rem; padding: 0.5rem; font-size: 0.875rem;" placeholder="Ex: Qual o endereço?">
+                    <input type="text" value="${faq.question}" onchange="updateFaqItem(${index}, 'question', this.value)" style="margin-bottom: 0.5rem; padding: 0.5rem; font-size: 0.875rem;" placeholder="Ex: Qual o endereço?">
                     
                     <label style="font-size: 0.7rem; color: var(--text-dim); margin-bottom: 0.25rem; display: block;">RESPOSTA</label>
-                    <textarea onchange="updateFaqItem(\${index}, 'answer', this.value)" style="width: 100%; height: 60px; padding: 0.5rem; border-radius: 0.5rem; border: 1px solid rgba(255,255,255,0.1); background: rgba(15,23,42,0.5); color: white; resize: vertical; font-size: 0.875rem;" placeholder="Ex: Estamos na Rua X... ">\${faq.answer}</textarea>
-                \`;
+                    <textarea onchange="updateFaqItem(${index}, 'answer', this.value)" style="width: 100%; height: 60px; padding: 0.5rem; border-radius: 0.5rem; border: 1px solid rgba(255,255,255,0.1); background: rgba(15,23,42,0.5); color: white; resize: vertical; font-size: 0.875rem;" placeholder="Ex: Estamos na Rua X... ">${faq.answer}</textarea>
+                `;
                 container.appendChild(div);
             });
         }
@@ -728,6 +756,66 @@
             currentFaqItems[index][field] = value;
         }
 
+        function renderMenuItems() {
+            const container = document.getElementById('menu-container');
+            container.innerHTML = '';
+            
+            if (currentMenuItems.length === 0) {
+                container.innerHTML = '<p style="color: var(--text-dim); font-size: 0.875rem;">Nenhum item de menu cadastrado.</p>';
+                return;
+            }
+
+            currentMenuItems.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.style.background = 'rgba(255,255,255,0.03)';
+                div.style.padding = '1rem';
+                div.style.borderRadius = '0.5rem';
+                div.style.border = '1px solid rgba(255,255,255,0.05)';
+                div.style.display = 'grid';
+                div.style.gridTemplateColumns = '50px 1fr 1fr auto';
+                div.style.gap = '0.5rem';
+                div.style.alignItems = 'center';
+
+                div.innerHTML = `
+                    <input type="text" value="${item.key}" onchange="updateMenuItem(${index}, 'key', this.value)" style="padding: 0.5rem; text-align: center;" placeholder="Nº">
+                    <input type="text" value="${item.label}" onchange="updateMenuItem(${index}, 'label', this.value)" style="padding: 0.5rem;" placeholder="Nome da Opção">
+                    <select onchange="updateMenuItem(${index}, 'action', this.value)" style="padding: 0.5rem; background: var(--card-bg); color: white; border: 1px solid rgba(255,255,255,0.1); border-radius: 0.5rem;">
+                        <option value="schedule" ${item.action === 'schedule' ? 'selected' : ''}>Iniciar Agendamento</option>
+                        <option value="appointments" ${item.action === 'appointments' ? 'selected' : ''}>Ver Agendamentos</option>
+                        <option value="human" ${item.action === 'human' ? 'selected' : ''}>Falar com Atendente</option>
+                        <option value="faq" ${item.action === 'faq' ? 'selected' : ''}>Menu de Dúvidas (FAQ)</option>
+                        <option value="link" ${item.action === 'link' ? 'selected' : ''}>Abrir Site/Link</option>
+                        <option value="text" ${item.action === 'text' ? 'selected' : ''}>Responder com Texto</option>
+                    </select>
+                    <div style="cursor: pointer; color: var(--danger); padding: 0.5rem;" onclick="removeMenuItem(${index})">
+                        <i class="fas fa-trash"></i>
+                    </div>
+                    ${(item.action === 'link' || item.action === 'text') ? `
+                    <div style="grid-column: span 4; margin-top: 0.5rem;">
+                        <label style="font-size: 0.7rem; color: var(--text-dim); margin-bottom: 0.25rem; display: block;">${item.action === 'link' ? 'URL DO LINK' : 'TEXTO DA RESPOSTA'}</label>
+                        <textarea onchange="updateMenuItem(${index}, 'value', this.value)" style="width: 100%; height: 60px; padding: 0.5rem; border-radius: 0.5rem; border: 1px solid rgba(255,255,255,0.1); background: rgba(15,23,42,0.5); color: white; resize: vertical; font-size: 0.875rem;">${item.value || ''}</textarea>
+                    </div>
+                    ` : ''}
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function addMenuItem() {
+            currentMenuItems.push({ key: (currentMenuItems.length + 1).toString(), label: '', action: 'text', value: '' });
+            renderMenuItems();
+        }
+
+        function removeMenuItem(index) {
+            currentMenuItems.splice(index, 1);
+            renderMenuItems();
+        }
+
+        function updateMenuItem(index, field, value) {
+            currentMenuItems[index][field] = value;
+            if (field === 'action') renderMenuItems(); // Re-render to show/hide value field
+        }
+
         async function saveMessages() {
             const slug = document.getElementById('msg-instance-select').value;
             const inst = instancesData.find(i => i.slug === slug);
@@ -740,7 +828,8 @@
                     welcome: document.getElementById('msg-welcome').value,
                     appointmentConfirmed: document.getElementById('msg-confirmed').value
                 },
-                faq: currentFaqItems
+                faq: currentFaqItems,
+                menu: currentMenuItems
             };
 
             toggleLoader(true);
@@ -748,17 +837,17 @@
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Authorization': \`Bearer \${token}\`
+                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify(updatedInst)
             });
             toggleLoader(false);
 
             if (res.ok) {
-                alert('Mensagens salvas com sucesso!');
+                alert('Configurações salvas com sucesso!');
                 loadInstances();
             } else {
-                alert('Erro ao salvar mensagens!');
+                alert('Erro ao salvar configurações!');
             }
         }
 
@@ -804,8 +893,21 @@
             document.getElementById('edit-website').value = inst.website_url || '';
             document.getElementById('edit-supa-url').value = inst.supabase_url || '';
             document.getElementById('edit-supa-key').value = inst.supabase_key || '';
+            document.getElementById('edit-mp-token').value = inst.mercadopago_access_token || '';
+            
+            // Gerar URL do webhook baseada na porta da instância e IP
+            const baseUrl = window.location.protocol + '//' + window.location.hostname;
+            const webhookUrl = inst.port ? `${baseUrl}:${inst.port}/webhook/mercadopago` : 'Salve a porta primeiro';
+            document.getElementById('edit-webhook-url').value = webhookUrl;
             
             document.getElementById('modal-edit').style.display = 'flex';
+        }
+
+        function copyWebhook() {
+            const input = document.getElementById('edit-webhook-url');
+            input.select();
+            document.execCommand('copy');
+            alert('URL do Webhook copiada!');
         }
 
         function closeModal() {
@@ -819,7 +921,8 @@
                 port: parseInt(document.getElementById('edit-port').value),
                 website_url: document.getElementById('edit-website').value,
                 supabase_url: document.getElementById('edit-supa-url').value,
-                supabase_key: document.getElementById('edit-supa-key').value
+                supabase_key: document.getElementById('edit-supa-key').value,
+                mercadopago_access_token: document.getElementById('edit-mp-token').value
             };
 
             toggleLoader(true);

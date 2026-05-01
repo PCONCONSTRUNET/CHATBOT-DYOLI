@@ -135,6 +135,7 @@ export async function loadConfigFromDb(slug: string): Promise<InstanceConfig> {
         mercadopagoAccessToken: data.mercadopago_access_token,
         messages: data.messages,
         faq: data.faq,
+        menu: data.menu || [],
         reminder24h: data.reminder24h,
         reminder1h: data.reminder1h,
         sessionFolder: data.session_folder || `sessions/${data.slug}`
