@@ -310,7 +310,7 @@ async function connectToWhatsApp() {
     sock.ev.on('messages.upsert', async (m) => {
         if (!m.messages || m.messages.length === 0) return;
         const msg = m.messages[0];
-        if (!msg || !msg.message || msg.key.fromMe || msg.key.remoteJid === 'status@broadcast') return;
+        if (!msg || !msg.message || msg.key.remoteJid === 'status@broadcast') return;
 
         // Evita processar a mesma mensagem duas vezes
         const msgId = msg.key.id;
@@ -321,7 +321,21 @@ async function connectToWhatsApp() {
         
         const remoteJid = msg.key.remoteJid;
         if (!remoteJid) return;
+
+        const incomingText = (msg.message.conversation || msg.message.extendedTextMessage?.text || '').trim();
         
+        // ── COMANDO DA ATENDENTE (atendimento finalizado) ──
+        // Se a mensagem partiu de você (dona) e for o comando, reseta o estado do cliente
+        if (msg.key.fromMe) {
+            const cmd = incomingText.toLowerCase();
+            if (cmd === 'atendimento finalizado') {
+                await savePersistentState(remoteJid, { state: 'START' });
+                await sock.sendMessage(remoteJid, { text: '🔄 *Atendimento finalizado. O bot voltará a te atender agora.*' });
+                console.log(`[🔄 ${config.id}] Bot resetado manualmente para ${remoteJid}`);
+            }
+            return; // Não processa mensagens próprias como mensagens de cliente
+        }
+
         let userPhone = '';
         if (remoteJid.endsWith('@lid')) {
             const senderPn = (msg.key as any).senderPn?.split('@')[0];
@@ -330,18 +344,12 @@ async function connectToWhatsApp() {
             const resolvedJid = resolvedWa?.[0]?.jid?.split('@')[0];
             const participant = msg.key.participant || msg.message?.extendedTextMessage?.contextInfo?.participant;
             
-            console.log(`[DEBUG LID] msg.key:`, JSON.stringify(msg.key));
-            console.log(`[DEBUG LID] resolvedWa:`, JSON.stringify(resolvedWa));
-            console.log(`[DEBUG LID] participant:`, participant);
-            console.log(`[DEBUG LID] senderPn: ${senderPn}, resolvedJid: ${resolvedJid}, remoteJidAlt: ${remoteJidAlt}`);
-
             userPhone = remoteJidAlt || senderPn || resolvedJid || participant?.split('@')[0] || remoteJid.split('@')[0];
         } else {
             userPhone = remoteJid.split('@')[0];
         }
         userPhone = userPhone.replace(/\D/g, '');
 
-        const incomingText = (msg.message.conversation || msg.message.extendedTextMessage?.text || '').trim();
         if (!incomingText) return;
 
         const stateKey = remoteJid;
@@ -359,7 +367,25 @@ async function connectToWhatsApp() {
             }
         };
 
+        const sendDoc = async (url: string, fileName: string) => {
+            if (sock) {
+                // Ajusta link do Dropbox para download direto se necessário
+                const directUrl = url.replace('dl=0', 'dl=1').replace('www.dropbox.com', 'dl.dropboxusercontent.com');
+                await sock.sendMessage(remoteJid, {
+                    document: { url: directUrl },
+                    mimetype: 'application/pdf',
+                    fileName: fileName
+                });
+            }
+        };
+
         const currentState = rawState.state;
+
+        // Bloqueio se estiver em atendimento humano
+        if (currentState === 'WAITING_HUMAN') {
+            console.log(`[👤 ${config.id}] Cliente ${userPhone} em atendimento humano. Bot silenciado.`);
+            return;
+        }
 
         // ── Boas-vindas para saudações ou estado inicial ──
         const greetings = ['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'menu', 'voltar'];
@@ -463,21 +489,21 @@ async function connectToWhatsApp() {
                             return;
                         }
 
-                        let listMsg = `✨ *PROCEDIMENTOS* ✨\n\n${SEPARATOR}\n`;
-                        servicos.forEach((s: any, i: number) => {
-                            const nome = s.nome || s.name || 'Procedimento';
-                            const valor = s.preco || s.price || 0;
-                            const precoFormatado = parseFloat(valor).toFixed(2).replace('.', ',');
-                            listMsg += `*${i+1}.* ${nome} — R$ ${precoFormatado}\n`;
-                        });
-
+                        // Agrupar por categorias
+                        const categories = [...new Set(servicos.map((s: any) => s.categoria || 'Outros'))];
+                        
                         // Adição especial para Dyoli
-                        if (config.id === 'dyoli') {
-                            listMsg += `*${servicos.length + 1}.* 💅 Unhas (Zelia Kad)\n`;
+                        if (config.id === 'dyoli' && !categories.includes('Unhas')) {
+                            categories.push('Unhas');
                         }
 
-                        listMsg += `\n${SEPARATOR}\n_Digite o número do procedimento ou *0* para voltar._`;
-                        await setState({ state: 'SELECT_SERVICE', servicos });
+                        let listMsg = `✨ *CATEGORIAS* ✨\n\n${SEPARATOR}\n`;
+                        categories.forEach((cat: string, i: number) => {
+                            listMsg += `*${i+1}.* ${cat}\n`;
+                        });
+
+                        listMsg += `\n${SEPARATOR}\n_Digite o número da categoria ou *0* para voltar._`;
+                        await setState({ state: 'SELECT_CATEGORY', categories, servicos });
                         await sendMsg(listMsg);
                     } catch (err) {
                         console.error('Erro ao listar serviços:', err);
@@ -515,13 +541,7 @@ async function connectToWhatsApp() {
                     break;
                 }
 
-                case '5': { // Dúvidas e Cuidados (IA)
-                    await sendMsg(`Opa! Pode mandar sua dúvida sobre os procedimentos ou cuidados pós-sessão que eu te ajudo! 🤖✨`);
-                    await setState({ state: 'AI_CHATTING' });
-                    break;
-                }
-
-                case '6': { // Agendamento simplificado
+                case '5': { // Agendamento simplificado
                     const simpleUrl = config.websiteUrl.endsWith('/')
                         ? `${config.websiteUrl}simplificada`
                         : `${config.websiteUrl}/simplificada`;
@@ -534,29 +554,100 @@ async function connectToWhatsApp() {
                     break;
                 }
 
+                case '6': { // Cuidados Pós-Procedimento
+                    const aftercareMsg = `✨ *CUIDADOS PÓS-PROCEDIMENTO* ✨\n\n${SEPARATOR}\n` +
+                        `Selecione o procedimento para receber o guia em PDF:\n\n` +
+                        `*1.* Reconstrução de lóbulo com TCA\n` +
+                        `*2.* Piercing / Perfuração\n` +
+                        `*3.* Piercing Íntimo\n` +
+                        `*4.* Micropigmentação Labial\n` +
+                        `*5.* Micropigmentação Sobrancelha\n` +
+                        `*6.* Tatuagem (Em breve)\n\n` +
+                        `${SEPARATOR}\n_Digite o número ou *0* para voltar._`;
+                    await sendMsg(aftercareMsg);
+                    await setState({ state: 'SELECT_AFTERCARE' });
+                    break;
+                }
+
                 default:
                     await sendMsg('Opção inválida. Digite o número da opção desejada (1 a 6).');
             }
             return;
         }
 
-        // ── ETAPA 1: Escolha do serviço ──
-        if (currentState === 'SELECT_SERVICE') {
+        // ── ETAPA 0: Escolha da categoria ──
+        if (currentState === 'SELECT_CATEGORY') {
             if (incomingText === '0') { await setState({ state: 'START' }); return; }
-            
+
+            const categories = rawState.categories || [];
             const servicos = rawState.servicos || [];
+            const idx = parseInt(incomingText) - 1;
+            const category = categories[idx];
+
+            if (!category) {
+                await sendMsg('Categoria inválida. Digite o número da opção ou *0* para voltar.');
+                return;
+            }
 
             // Caso especial: Unhas para Dyoli
-            if (config.id === 'dyoli' && (incomingText === (servicos.length + 1).toString() || incomingText === '1.' + (servicos.length + 1))) {
-                await sendMsg(`💅 *UNHAS - Zelia Kad*\n\nPara agendar serviços de unhas, por favor entre em contato diretamente com a Zelia no link abaixo:\n\nhttps://wa.me/554899171918?text=Olá,%20vi%20no%20bot%20da%20Dyoli%20e%20gostaria%20de%20agendar%20unhas.`);
+            if (config.id === 'dyoli' && category === 'Unhas') {
+                await sendMsg(`💅 *UNHAS - Zelia Kad*\n\nPara agendar serviços de unhas, por favor entre em contato diretamente com a Zelia no link abaixo:\n\nhttps://wa.me/554899171918`);
                 await setState({ state: 'START' });
                 return;
             }
+
+            const filteredServices = servicos.filter((s: any) => (s.categoria || 'Outros') === category);
+            
+            let listMsg = `✨ *${category.toUpperCase()}* ✨\n\n${SEPARATOR}\n`;
+            filteredServices.forEach((s: any, i: number) => {
+                const nome = s.nome || s.name || 'Procedimento';
+                const valor = s.preco || s.price || 0;
+                const precoFormatado = parseFloat(valor).toFixed(2).replace('.', ',');
+                listMsg += `*${i+1}.* ${nome} — R$ ${precoFormatado}\n`;
+            });
+
+            listMsg += `\n${SEPARATOR}\n_Digite o número do procedimento ou *0* para voltar._`;
+            await setState({ state: 'SELECT_SERVICE', servicos: filteredServices, categories, allServices: servicos });
+            await sendMsg(listMsg);
+            return;
+        }
+
+        // ── ETAPA 1: Escolha do serviço ──
+        if (currentState === 'SELECT_SERVICE') {
+            if (incomingText === '0') { 
+                // Se veio de categorias, volta para categorias
+                if (rawState.categories && rawState.allServices) {
+                    let listMsg = `✨ *CATEGORIAS* ✨\n\n${SEPARATOR}\n`;
+                    rawState.categories.forEach((cat: string, i: number) => {
+                        listMsg += `*${i+1}.* ${cat}\n`;
+                    });
+                    listMsg += `\n${SEPARATOR}\n_Digite o número da categoria ou *0* para voltar._`;
+                    await setState({ state: 'SELECT_CATEGORY', categories: rawState.categories, servicos: rawState.allServices });
+                    await sendMsg(listMsg);
+                    return;
+                }
+                await setState({ state: 'START' }); 
+                return; 
+            }
+            
+            const servicos = rawState.servicos || [];
 
             const idx = parseInt(incomingText) - 1;
             const servico = servicos[idx];
             if (!servico) {
                 await sendMsg('Serviço inválido. Digite o número da opção ou *0* para voltar.');
+                return;
+            }
+
+            // Redirecionamento para Tatuagens no Estúdio Dyoli
+            if (config.id === 'dyoli' && (servico.categoria === 'Tatuagens' || servico.category === 'Tatuagens')) {
+                await sendMsg(
+                    `🎨 *TATUAGEM - Dyoli Godim*\n\n` +
+                    `Que legal que você tem interesse em uma tatuagem! 💖\n\n` +
+                    `Como cada arte é única, a *Dyoli* precisa conversar pessoalmente com você para entender a ideia, o tamanho e o local da tattoo para te passar o orçamento certinho.\n\n` +
+                    `*Aguarde um instante que ela já vai te atender para combinarem os detalhes!* ⏳`
+                );
+                await setState({ state: 'WAITING_HUMAN' });
                 return;
             }
 
@@ -889,7 +980,73 @@ async function connectToWhatsApp() {
             return;
         }
 
-        // ── Dúvidas e Cuidados (FAQ) ──
+        // ── Seleção de Cuidados Pós-Procedimento (PDF) ──
+        if (currentState === 'SELECT_AFTERCARE') {
+            if (incomingText === '0') {
+                await setState({ state: 'START' });
+                const welcome = config.messages?.welcome || `Bem-vindo à ${config.name}!`;
+                await sendMsg(formatMsg(welcome, { empresa: config.name, servicos_extra: config.welcomeExtra }));
+                await setState({ state: 'MENU' });
+                return;
+            }
+
+            switch (incomingText) {
+                case '1': {
+                    await sendMsg("Gerando o guia de *Reconstrução de lóbulo com TCA*... Aguarde um instante. 📄");
+                    await sendDoc(
+                        "https://www.dropbox.com/scl/fi/1sbrkz0gwhh0rf60bn496/cuidados_tca_dyoli.pdf?rlkey=tqq8us61phzbjw34x4zzopp3h&st=11cxp73t&dl=1",
+                        "Cuidados_Reconstrucao_Lobulo_TCA.pdf"
+                    );
+                    await sendMsg("Acabei de enviar o PDF acima! 🌸\n\nPrecisa de mais algum guia? Se não, digite *0* para voltar.");
+                    break;
+                }
+                case '2': {
+                    await sendMsg("Gerando o guia de *Piercing / Perfuração*... Aguarde um instante. 📄");
+                    await sendDoc(
+                        "https://www.dropbox.com/scl/fi/rf5xguudfledflhi5mv11/Recomenda-es-Piercing.pdf?rlkey=07fyqkt4akypg6m42b8jmkdbv&st=yevutw9x&dl=1",
+                        "Guia_Pos_Piercing.pdf"
+                    );
+                    await sendMsg("Acabei de enviar o PDF acima! 🌸\n\nPrecisa de mais algum guia? Se não, digite *0* para voltar.");
+                    break;
+                }
+                case '3': {
+                    await sendMsg("Gerando o guia de *Piercing Íntimo*... Aguarde um instante. 📄");
+                    await sendDoc(
+                        "https://www.dropbox.com/scl/fi/qeoj1wkqf9cqxoregwptc/Recomenda-es-Piercing-ntimo.pdf?rlkey=sm8hdyahfwfqfej2v357sg5ck&st=yv94z72x&dl=1",
+                        "Guia_Pos_Piercing_Intimo.pdf"
+                    );
+                    await sendMsg("Acabei de enviar o PDF acima! 🌸\n\nPrecisa de mais algum guia? Se não, digite *0* para voltar.");
+                    break;
+                }
+                case '4': {
+                    await sendMsg("Gerando o guia de *Micropigmentação Labial*... Aguarde um instante. 📄");
+                    await sendDoc(
+                        "https://www.dropbox.com/scl/fi/trt0a5zbdm2orinl6qoyy/Recomenda-es-Micropgmenta-o-Labial.pdf?rlkey=vjwxmirk424s5kf0b02v1pxzs&st=xe65qslk&dl=1",
+                        "Guia_Micropigmentacao_Labial.pdf"
+                    );
+                    await sendMsg("Acabei de enviar o PDF acima! 🌸\n\nPrecisa de mais algum guia? Se não, digite *0* para voltar.");
+                    break;
+                }
+                case '5': {
+                    await sendMsg("Gerando o guia de *Micropigmentação Sobrancelha*... Aguarde um instante. 📄");
+                    await sendDoc(
+                        "https://www.dropbox.com/scl/fi/392frpc2seqh1kr4old1x/Recomenda-es-Micropgmenta-o-Sobrancelha.pdf?rlkey=qewe525xboxxziuta06tm7zaa&st=6ei8avzt&dl=1",
+                        "Guia_Micropigmentacao_Sobrancelha.pdf"
+                    );
+                    await sendMsg("Acabei de enviar o PDF acima! 🌸\n\nPrecisa de mais algum guia? Se não, digite *0* para voltar.");
+                    break;
+                }
+                case '6': {
+                    await sendMsg("Este guia de Tatuagem ainda está sendo preparado pela nossa equipe e estará disponível em breve! ⏳\n\nEscolha outra opção ou digite *0* para voltar.");
+                    break;
+                }
+                default:
+                    await sendMsg("Opção inválida. Digite o número correspondente ou *0* para voltar.");
+            }
+            return;
+        }
+
+        // ── Dúvidas e Cuidados (IA) ──
         if (currentState === 'AI_CHATTING') {
             if (incomingText === '0') {
                 await setState({ state: 'START' });
