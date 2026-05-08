@@ -316,6 +316,11 @@ async function connectToWhatsApp() {
         const msg = m.messages[0];
         if (!msg || !msg.message || msg.key.remoteJid === 'status@broadcast') return;
 
+        // 🚫 BLOQUEIO DE GRUPOS E COMUNIDADES: Só processa se for chat privado
+        if (!msg.key.remoteJid?.endsWith('@s.whatsapp.net')) {
+            return;
+        }
+
         // Evita processar a mesma mensagem duas vezes
         const msgId = msg.key.id;
         if (!msgId) return;
