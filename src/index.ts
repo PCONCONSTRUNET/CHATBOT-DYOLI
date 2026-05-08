@@ -246,15 +246,19 @@ async function connectToWhatsApp() {
     // Função auxiliar para enviar mensagem com "falso digitando"
     const sendWithTyping = async (jid: string, content: any, options: any = {}) => {
         try {
-            await sock.sendPresenceUpdate('composing', jid);
-            await delay(500);
+            // Precisa inscrever na presença do JID antes de mostrar "digitando"
+            await sock.presenceSubscribe(jid);
+            await sock.sendPresenceUpdate('available', jid);
+            await delay(200);
+            
             await sock.sendPresenceUpdate('composing', jid);
             
             const text = content.text || '';
-            const typingTime = Math.max(3000, Math.min(text.length * 50, 6000));
+            const typingTime = Math.max(1500, Math.min(text.length * 30, 4000));
             await delay(typingTime);
             
             await sock.sendPresenceUpdate('paused', jid);
+            await delay(300);
             return await sock.sendMessage(jid, content, options);
         } catch (e) {
             if (sock?.sendMessage) {
@@ -387,14 +391,20 @@ async function connectToWhatsApp() {
             return;
         }
 
+        // Helper: monta welcome limpo (remove qualquer "ola teste" residual do banco)
+        const getWelcomeMessage = () => {
+            let welcome = config.messages?.welcome || `Bem-vindo à ${config.name}!`;
+            // Remove "ola teste" / "olá teste" que ficou salvo no banco por engano
+            if (welcome.toLowerCase().includes('ola teste') || welcome.toLowerCase().includes('olá teste') || welcome.trim().toLowerCase() === 'ola teste') {
+                welcome = `✨ *ESTUDIO DYOLI GODIM* ✨\n\nOlá! 💗 Seja muito bem-vindo(a)!\n\n🌸 Tattoo • Piercing • Micropigmentação • Manicure\n\n${SEPARATOR}\nCOMO POSSO TE AJUDAR HOJE?`;
+            }
+            return formatMsg(welcome, { empresa: config.name, servicos_extra: config.welcomeExtra });
+        };
+
         // ── Boas-vindas para saudações ou estado inicial ──
         const greetings = ['oi', 'olá', 'ola', 'bom dia', 'boa tarde', 'boa noite', 'menu', 'voltar'];
         if (greetings.includes(incomingText.toLowerCase()) || currentState === 'START') {
-            let welcome = config.messages?.welcome || `Bem-vindo à ${config.name}!`;
-            if (welcome.toLowerCase().includes('ola teste')) {
-                welcome = `✨ *ESTUDIO DYOLI GODIM* ✨\n\nOlá! 💗 Seja muito bem-vindo(a)!\n\n🌸 Tattoo • Piercing • Micropigmentação • Manicure\n\n${SEPARATOR}\nCOMO POSSO TE AJUDAR HOJE?`;
-            }
-            await sendMsg(formatMsg(welcome, { empresa: config.name, servicos_extra: config.welcomeExtra }));
+            await sendMsg(getWelcomeMessage());
             await setState({ state: 'MENU' });
             return;
         }
@@ -984,8 +994,7 @@ async function connectToWhatsApp() {
         if (currentState === 'SELECT_AFTERCARE') {
             if (incomingText === '0') {
                 await setState({ state: 'START' });
-                const welcome = config.messages?.welcome || `Bem-vindo à ${config.name}!`;
-                await sendMsg(formatMsg(welcome, { empresa: config.name, servicos_extra: config.welcomeExtra }));
+                await sendMsg(getWelcomeMessage());
                 await setState({ state: 'MENU' });
                 return;
             }
@@ -1050,9 +1059,7 @@ async function connectToWhatsApp() {
         if (currentState === 'AI_CHATTING') {
             if (incomingText === '0') {
                 await setState({ state: 'START' });
-                // Re-trigger start message logic roughly
-                let welcome = config.messages?.welcome || `Bem-vindo à ${config.name}!`;
-                await sendMsg(formatMsg(welcome, { empresa: config.name, servicos_extra: config.welcomeExtra }));
+                await sendMsg(getWelcomeMessage());
                 await setState({ state: 'MENU' });
                 return;
             }
