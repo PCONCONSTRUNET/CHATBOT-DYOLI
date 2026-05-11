@@ -1,7 +1,7 @@
 {
   "id": "dyoli",
   "name": "Estudio Dyoli Godim",
-  "active": false,
+  "active": true,
   "port": 3001,
   "phoneNumber": "",
   "supabaseUrl": "https://bevahgtmcdicyhjnrylk.supabase.co",
@@ -13,9 +13,7 @@
   "reminder1h": true,
   "welcomeExtra": "Tattoo • Piercing • Micropigmentação • Manicure",
   "websiteUrl": "www.estudiodyoligodim.com.br",
-  "misticClientId": "ci_jv1qky7dg3q1ok7",
-  "misticClientSecret": "cs_8o31ey1ln7jjvml2pxmq69opv",
-  "mercadopagoAccessToken": "APP_USR-4629152469359906-011114-d6116398fc402e148eefb01f9ff8aae4-1362304754",
+  "mercadopagoAccessToken": "APP_USR-1024148687209643-051117-84d82cc9b4d7d5245e9c5f426fd379a3-3393920191",
   "messages": {
     "welcome": "✨ *ESTUDIO DYOLI GODIM* ✨\n\nOlá! 🩷 Seja muito bem-vindo(a)!\n\n🌸 Tattoo • Piercing • Micropigmentação • Manicure\n\n━━━━━━━━━━━━━━━━━━━━\n*COMO POSSO TE AJUDAR HOJE?*\n\n1️⃣ Agendar pelo site\n2️⃣ Agendar por aqui mesmo\n3️⃣ Ver meus agendamentos\n4️⃣ Falar com a Dyoli\n5️⃣ Agendamento simplificado\n6️⃣ Dúvidas e Cuidados Pós-Procedimento\n\n━━━━━━━━━━━━━━━━━━━━\n_Digite apenas o número da opção desejada._",
     "paymentConfirmed": "✅ *PAGAMENTO CONFIRMADO* 🎉\n\n━━━━━━━━━━━━━━━━━━━━\n\nOlá! Identificamos o pagamento de *R$ {VALOR}* aqui no *Estudio Dyoli Godim*.\n\nSua vaga está 100% garantida — mal podemos esperar te receber! 🩷🌸\n\n━━━━━━━━━━━━━━━━━━━━\n_Qualquer dúvida, é só chamar!_ 💬",

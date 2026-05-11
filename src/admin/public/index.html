@@ -27,88 +27,163 @@
         }
 
         body {
-            background: radial-gradient(circle at top right, #1e1b4b, #0f172a);
+            background: radial-gradient(circle at center, #1e1b4b, #090e1a);
             color: var(--text-main);
             min-height: 100vh;
             display: flex;
             overflow-x: hidden;
+            background-attachment: fixed;
         }
 
         /* Login Screen */
         #login-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(15, 23, 42, 0.9);
-            backdrop-filter: blur(10px);
+            background: radial-gradient(circle at center, #1e1b4b, #0f172a);
             z-index: 1000;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: opacity 0.5s;
+            overflow: hidden;
+        }
+
+        .floating-logos {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .floating-logo {
+            position: absolute;
+            background-image: url('logo.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            opacity: 0.15;
+            filter: drop-shadow(0 0 10px rgba(99, 102, 241, 0.3));
+            animation: float linear infinite;
+        }
+
+        @keyframes float {
+            0% {
+                transform: translate(0, 0) rotate(0deg) scale(1);
+            }
+            33% {
+                transform: translate(30px, 50px) rotate(120deg) scale(1.1);
+            }
+            66% {
+                transform: translate(-20px, 80px) rotate(240deg) scale(0.9);
+            }
+            100% {
+                transform: translate(0, 0) rotate(360deg) scale(1);
+            }
         }
 
         .login-card {
-            background: var(--card-bg);
-            padding: 2rem;
-            border-radius: 1.5rem;
+            background: rgba(255, 255, 255, 0.02);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            padding: 3rem;
+            border-radius: 2.5rem;
             border: 1px solid rgba(255, 255, 255, 0.1);
+            border-top: 1px solid rgba(255, 255, 255, 0.3);
+            border-left: 1px solid rgba(255, 255, 255, 0.2);
             width: 100%;
-            max-width: 360px;
+            max-width: 420px;
             text-align: center;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            box-shadow: 
+                0 25px 50px -12px rgba(0, 0, 0, 0.8),
+                inset 0 0 20px rgba(255, 255, 255, 0.02);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Reflexo extra cristalino */
+        .login-card::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 50%;
+            background: linear-gradient(
+                to bottom,
+                rgba(255, 255, 255, 0.05),
+                transparent
+            );
+            pointer-events: none;
         }
 
         .login-card h1 {
-            margin-bottom: 2rem;
-            font-size: 2rem;
-            background: linear-gradient(to right, #818cf8, #c084fc);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            margin-bottom: 2.5rem;
+            font-size: 2.5rem;
+            font-weight: 800;
+            letter-spacing: -2px;
+            color: #fff;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
         }
 
         input {
             width: 100%;
-            padding: 1rem;
-            border-radius: 0.75rem;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            background: rgba(15, 23, 42, 0.5);
+            padding: 1.2rem 1.5rem;
+            border-radius: 1.25rem;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.03);
             color: white;
             margin-bottom: 1.5rem;
             outline: none;
-            transition: border-color 0.3s;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 1rem;
+            backdrop-filter: blur(5px);
         }
 
         input:focus {
-            border-color: var(--primary);
+            border-color: rgba(255, 255, 255, 0.5);
+            background: rgba(255, 255, 255, 0.07);
+            box-shadow: 0 0 30px rgba(255, 255, 255, 0.1);
         }
 
         button {
             width: 100%;
-            padding: 1rem;
-            border-radius: 0.75rem;
-            border: none;
-            background: var(--primary);
+            padding: 1.2rem;
+            border-radius: 1.25rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(99, 102, 241, 0.2);
+            backdrop-filter: blur(10px);
             color: white;
-            font-weight: 600;
+            font-weight: 800;
+            font-size: 1.1rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
             cursor: pointer;
             transition: all 0.3s;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
         }
 
         button:hover {
-            background: var(--primary-hover);
-            transform: translateY(-2px);
+            background: rgba(99, 102, 241, 0.4);
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+            border-color: rgba(255, 255, 255, 0.4);
         }
 
         /* Sidebar */
         aside {
-            width: 280px;
-            background: rgba(15, 23, 42, 0.5);
-            backdrop-filter: blur(20px);
+            width: 260px;
+            background: rgba(255, 255, 255, 0.02);
+            backdrop-filter: blur(30px);
+            -webkit-backdrop-filter: blur(30px);
             border-right: 1px solid rgba(255, 255, 255, 0.05);
             display: flex;
             flex-direction: column;
-            padding: 2rem;
+            padding: 2rem 1.5rem;
             height: 100vh;
+            position: sticky;
+            top: 0;
         }
 
         .logo {
@@ -233,19 +308,24 @@
         }
 
         .instance-card {
-            background: var(--card-bg);
-            border-radius: 1.25rem;
-            padding: 1.25rem;
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: 2rem;
+            padding: 2rem;
             border: 1px solid rgba(255, 255, 255, 0.05);
-            transition: transform 0.3s, box-shadow 0.3s;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
             position: relative;
             overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
         }
 
         .instance-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
-            border-color: rgba(99, 102, 241, 0.3);
+            transform: translateY(-8px);
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(99, 102, 241, 0.4);
+            box-shadow: 0 30px 60px rgba(0,0,0,0.6);
         }
 
         .status-badge {
@@ -291,22 +371,27 @@
         }
 
         .btn-icon {
-            width: 40px;
-            height: 40px;
+            width: 45px;
+            height: 45px;
             display: flex;
             align-items: center;
             justify-content: center;
-            border-radius: 0.75rem;
+            border-radius: 1rem;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             border: 1px solid rgba(255, 255, 255, 0.1);
             background: rgba(255, 255, 255, 0.05);
+            color: var(--text-dim);
         }
 
-        .btn-icon:hover { background: rgba(255, 255, 255, 0.1); transform: scale(1.1); }
-        .btn-icon.play:hover { color: var(--success); border-color: var(--success); }
-        .btn-icon.stop:hover { color: var(--danger); border-color: var(--danger); }
-        .btn-icon.refresh:hover { color: var(--primary); border-color: var(--primary); }
+        .btn-icon:hover { 
+            background: rgba(255, 255, 255, 0.1); 
+            transform: scale(1.1) translateY(-2px);
+            color: white;
+        }
+        .btn-icon.play:hover { color: var(--success); border-color: var(--success); box-shadow: 0 0 15px rgba(34, 197, 94, 0.3); }
+        .btn-icon.stop:hover { color: var(--danger); border-color: var(--danger); box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); }
+        .btn-icon.refresh:hover { color: var(--primary); border-color: var(--primary); box-shadow: 0 0 15px rgba(99, 102, 241, 0.3); }
 
         /* Circuit Loader Styles */
         #circuit-loader {
@@ -356,6 +441,17 @@
         }
 
         .pulse { animation: pulse 2s infinite; }
+
+        .log-info { color: #818cf8; font-weight: bold; }
+        .log-error { color: #f87171; font-weight: bold; }
+        .log-success { color: #4ade80; font-weight: bold; }
+        .log-warning { color: #fbbf24; font-weight: bold; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
     </style>
 </head>
 <body>
@@ -418,6 +514,7 @@
     </div>
 
     <div id="login-overlay">
+        <div class="floating-logos" id="logo-container"></div>
         <div class="login-card">
             <h1>P-CON BOT</h1>
             <input type="password" id="admin-pass" placeholder="Senha do Servidor">
@@ -425,6 +522,35 @@
             <p id="login-error" style="color: var(--danger); margin-top: 1rem; font-size: 0.875rem; display: none;"></p>
         </div>
     </div>
+
+    <script>
+        // Gerador de Logos Flutuantes
+        function createFloatingLogos() {
+            const container = document.getElementById('logo-container');
+            const count = 12; // Quantidade de logos
+            
+            for (let i = 0; i < count; i++) {
+                const logo = document.createElement('div');
+                logo.className = 'floating-logo';
+                
+                const size = Math.random() * (120 - 40) + 40; // Tamanho entre 40px e 120px
+                const left = Math.random() * 100;
+                const top = Math.random() * 100;
+                const duration = Math.random() * (25 - 12) + 12; // Duração entre 12s e 25s
+                const delay = Math.random() * -20; // Começo aleatório
+                
+                logo.style.width = `${size}px`;
+                logo.style.height = `${size}px`;
+                logo.style.left = `${left}%`;
+                logo.style.top = `${top}%`;
+                logo.style.animationDuration = `${duration}s`;
+                logo.style.animationDelay = `${delay}s`;
+                
+                container.appendChild(logo);
+            }
+        }
+        createFloatingLogos();
+    </script>
 
     <aside>
         <div class="logo">

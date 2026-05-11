@@ -31,8 +31,6 @@ export interface InstanceConfig {
     websiteUrl: string;
     
     // Pagamentos
-    misticClientId?: string;
-    misticClientSecret?: string;
     mercadopagoAccessToken?: string;
     
     // Pasta de sessão
@@ -130,8 +128,6 @@ export async function loadConfigFromDb(slug: string): Promise<InstanceConfig> {
         webhookSecret: data.webhook_secret,
         websiteUrl: data.website_url,
         welcomeExtra: data.welcome_extra,
-        misticClientId: data.mistic_client_id,
-        misticClientSecret: data.mistic_client_secret,
         mercadopagoAccessToken: data.mercadopago_access_token,
         messages: data.messages,
         faq: data.faq,
@@ -172,8 +168,6 @@ export async function loadAllInstancesFromDb(): Promise<InstanceConfig[]> {
         webhookSecret: inst.webhook_secret,
         websiteUrl: inst.website_url,
         welcomeExtra: inst.welcome_extra,
-        misticClientId: inst.mistic_client_id,
-        misticClientSecret: inst.mistic_client_secret,
         mercadopagoAccessToken: inst.mercadopago_access_token,
         messages: inst.messages,
         faq: inst.faq,

@@ -7,74 +7,6 @@ import type { InstanceConfig } from './config.js';
  */
 export function createPaymentClients(config: InstanceConfig) {
 
-    // ================== MISTIC PAY ==================
-    const MISTIC_BASE = 'https://api.misticpay.com/api';
-
-    const misticHeaders = () => ({
-        'ci': config.misticClientId || '',
-        'cs': config.misticClientSecret || '',
-        'Content-Type': 'application/json',
-    });
-
-    const criarPagamentoPixMistic = async (opts: {
-        valor: number;
-        payerName: string;
-        payerDocument: string;
-        transactionId: string;
-        description: string;
-        webhookUrl?: string;
-    }) => {
-        if (!config.misticClientId || !config.misticClientSecret) {
-            throw new Error(`[${config.id}] Mistic Pay não configurado`);
-        }
-
-        const res = await fetch(`${MISTIC_BASE}/transactions/create`, {
-            method: 'POST',
-            headers: misticHeaders(),
-            body: JSON.stringify({
-                amount: opts.valor,
-                payerName: opts.payerName,
-                payerDocument: opts.payerDocument,
-                transactionId: opts.transactionId,
-                description: opts.description,
-                projectWebhook: opts.webhookUrl,
-            }),
-        });
-
-        if (!res.ok) {
-            const err = await res.text();
-            throw new Error(`Mistic Pay API Error ${res.status}: ${err}`);
-        }
-
-        const body = await res.json() as any;
-        const data = body.data;
-
-        return {
-            id: data.transactionId,
-            copy_paste: data.copyPaste,
-            qr_base64: data.qrCodeBase64,
-            qr_url: data.qrcodeUrl,
-            valor: data.transactionAmount / 100,
-            status: data.transactionState,
-        };
-    };
-
-    const verificarPagamentoMistic = async (transactionId: string | number) => {
-        const res = await fetch(`${MISTIC_BASE}/transactions/check`, {
-            method: 'POST',
-            headers: misticHeaders(),
-            body: JSON.stringify({ transactionId: String(transactionId) }),
-        });
-
-        if (!res.ok) {
-            const err = await res.text();
-            throw new Error(`Mistic Pay check error ${res.status}: ${err}`);
-        }
-
-        const body = await res.json() as any;
-        return body.transaction;
-    };
-
     // ================== MERCADO PAGO ==================
     let mpClient: MercadoPagoConfig | null = null;
     if (config.mercadopagoAccessToken) {
@@ -135,12 +67,9 @@ export function createPaymentClients(config: InstanceConfig) {
     };
 
     return {
-        criarPagamentoPixMistic,
-        verificarPagamentoMistic,
         criarPagamentoPix,
         criarLinkCartao,
         consultarPagamento,
-        hasMistic: !!(config.misticClientId && config.misticClientSecret),
         hasMercadoPago: !!config.mercadopagoAccessToken,
     };
 }

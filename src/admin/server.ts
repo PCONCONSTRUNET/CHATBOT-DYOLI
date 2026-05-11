@@ -144,18 +144,20 @@ app.get('/api/logs', authenticate, (req, res) => {
             const logPath = proc?.pm2_env?.pm_out_log_path;
             const errPath = proc?.pm2_env?.pm_err_log_path;
 
-            let combinedLogs = '';
+            let combinedLogs = [];
             
             if (logPath && fs.existsSync(logPath)) {
-                combinedLogs += fs.readFileSync(logPath, 'utf8').split('\n').slice(-30).join('<br>');
+                const logs = fs.readFileSync(logPath, 'utf8').split('\n').slice(-50);
+                combinedLogs.push(...logs.map(l => `<span class="log-info">[INFO]</span> ${l}`));
             }
             if (errPath && fs.existsSync(errPath)) {
-                const errs = fs.readFileSync(errPath, 'utf8').split('\n').slice(-20).join('<br>');
-                if (errs) combinedLogs += '<br><span style="color:red;">[ERROR LOGS]</span><br>' + errs;
+                const errs = fs.readFileSync(errPath, 'utf8').split('\n').slice(-30);
+                combinedLogs.push(...errs.map(e => `<span class="log-error">[ERROR]</span> ${e}`));
             }
 
-            if (combinedLogs) {
-                res.json({ logs: combinedLogs });
+            if (combinedLogs.length > 0) {
+                // Sort by something? For now just send as is or combined
+                res.json({ logs: combinedLogs.join('\n') });
             } else {
                 res.json({ logs: "Nenhum log encontrado para este processo." });
             }
