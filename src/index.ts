@@ -326,9 +326,14 @@ async function connectToWhatsApp() {
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('messages.upsert', async (m) => {
+        // ✅ Só processa mensagens novas (type 'notify'), ignora histórico
+        if (m.type !== 'notify') return;
         if (!m.messages || m.messages.length === 0) return;
         const msg = m.messages[0];
         if (!msg || !msg.message || msg.key.remoteJid === 'status@broadcast') return;
+
+        // 🛡️ Wrapper de segurança: captura qualquer erro e loga sem matar o processo
+        try {
 
         // 🚫 BLOQUEIO DE GRUPOS E COMUNIDADES: Só processa se for chat privado
         if (!msg.key.remoteJid?.endsWith('@s.whatsapp.net')) {
@@ -385,8 +390,16 @@ async function connectToWhatsApp() {
 
 
         const sendMsg = async (text: string) => {
-            if (sock && (sock as any).sendWithTyping) {
-                await (sock as any).sendWithTyping(remoteJid, { text });
+            try {
+                if (sock && (sock as any).sendWithTyping) {
+                    await (sock as any).sendWithTyping(remoteJid, { text });
+                } else if (sock?.sendMessage) {
+                    await sock.sendMessage(remoteJid, { text });
+                }
+            } catch (sendErr: any) {
+                console.error(`[❌ ${config.id}] Erro ao enviar msg para ${remoteJid}:`, sendErr?.message || sendErr);
+                // Tentativa final direta
+                try { await sock.sendMessage(remoteJid, { text }); } catch (_) {}
             }
         };
 
@@ -1118,6 +1131,11 @@ async function connectToWhatsApp() {
         // ── Aguardando atendimento humano — silêncio ──
         if (currentState === 'WAITING_HUMAN') {
             return;
+        }
+
+        } catch (handlerErr: any) {
+            console.error(`[💥 ${config.id}] ERRO CRÍTICO no handler de mensagens:`, handlerErr?.message || handlerErr);
+            console.error(handlerErr?.stack || '');
         }
     });
 }
