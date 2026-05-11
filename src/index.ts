@@ -238,6 +238,9 @@ async function connectToWhatsApp() {
         printQRInTerminal: false,
         browser: Browsers.macOS('Chrome'),
         syncFullHistory: false,
+        shouldSyncHistoryMessage: () => false,
+        connectTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 0,
     });
 
     const supabase = createClient(config.supabaseUrl, config.supabaseKey);
@@ -272,30 +275,21 @@ async function connectToWhatsApp() {
 
     globalSock = sock;
 
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
         if (qr) {
             latestQR = qr;
-            console.log(`[📱 ${config.id}] QR Code pronto!`);
+            console.log(`[📱 ${config.id}] Novo QR Code gerado.`);
             qrcode.generate(qr, { small: true });
         }
-        if (connection === 'open') { 
-            latestQR = ''; 
-            console.log(`[✅ ${config.id}] Conectado!`); 
-            if (!reminderInterval && sock) {
-                reminderInterval = startReminders(config, sock);
-            }
-        }
+
         if (connection === 'close') {
+            const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
+            console.log(`[⚡ ${config.id}] Conexão fechada. Reconectando: ${shouldReconnect}`);
             if (reminderInterval) {
                 clearInterval(reminderInterval);
                 reminderInterval = null;
             }
-            
-            const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
-            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-            
-            if (statusCode === DisconnectReason.loggedOut) {
                 console.log(`[🚪 ${config.id}] Logout detectado. Limpando sessão e reiniciando...`);
                 const sessionPath = path.resolve(config.sessionFolder || `sessions/${config.id}`);
                 if (fs.existsSync(sessionPath)) {
