@@ -345,7 +345,7 @@ async function connectToWhatsApp() {
         const remoteJid = msg.key.remoteJid;
         if (!remoteJid) return;
 
-        const incomingText = (msg.message.conversation || msg.message.extendedTextMessage?.text || '').trim();
+        let incomingText = (msg.message.conversation || msg.message.extendedTextMessage?.text || '').trim();
         
         // ── COMANDO DA ATENDENTE (atendimento finalizado) ──
         // Se a mensagem partiu de você (dona) e for o comando, reseta o estado do cliente
@@ -970,6 +970,7 @@ async function connectToWhatsApp() {
                 const whatsapp = userPhone;
                 // Tenta salvar na master, senao vai na local
                 const apptData = {
+                    instance_slug: config.id,
                     customer_whatsapp: whatsapp,
                     customer_name: nome,
                     service_id: servico.id,
@@ -984,8 +985,10 @@ async function connectToWhatsApp() {
 
                 const { error: dbErr } = await masterSupabase.from('appointments').insert([apptData]);
                 if (dbErr) {
+                    console.warn(`[⚠️ ${config.id}] Falha ao salvar na master (${dbErr.message}). Salvando no local...`);
                     // Fallback se não tiver master (pra instâncias não migradas)
-                    await (sock as any).supabase.from('appointments').insert([apptData]);
+                    const { instance_slug: _, ...localApptData } = apptData;
+                    await (sock as any).supabase.from('appointments').insert([localApptData]);
                 }
 
                 await setState({ ...rawState, state: 'AWAITING_PAYMENT', payment_id: resposta.id, external_reference, valorPagamento: valorCobrado });
