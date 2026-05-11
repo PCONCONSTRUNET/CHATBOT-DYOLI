@@ -54,7 +54,7 @@ const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 const authMiddleware = (req: any, res: any, next: any) => {
     const authHeader = req.headers['authorization'];
     const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null;
-    const bodyToken = req.body ? req.body.token : null;
+    const bodyToken = (req.body && typeof req.body === 'object') ? req.body.token : null;
     const token = req.headers['x-webhook-token'] || bodyToken || req.query.token || bearerToken;
 
     if (token !== config.webhookSecret) {
