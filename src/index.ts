@@ -284,21 +284,41 @@ async function connectToWhatsApp() {
         }
 
         if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
+            const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
             console.log(`[⚡ ${config.id}] Conexão fechada. Reconectando: ${shouldReconnect}`);
+            
             if (reminderInterval) {
                 clearInterval(reminderInterval);
                 reminderInterval = null;
             }
+
+            if (statusCode === DisconnectReason.loggedOut) {
                 console.log(`[🚪 ${config.id}] Logout detectado. Limpando sessão e reiniciando...`);
                 const sessionPath = path.resolve(config.sessionFolder || `sessions/${config.id}`);
                 if (fs.existsSync(sessionPath)) {
                     fs.rmSync(sessionPath, { recursive: true, force: true });
                 }
+            }
+
+            if (shouldReconnect) {
                 setTimeout(connectToWhatsApp, 3000);
-            } else {
-                console.log(`[🔄 ${config.id}] Conexão fechada (Motivo: ${statusCode}). Reconectando em 3s...`);
-                setTimeout(connectToWhatsApp, 3000);
+            }
+        } else if (connection === 'open') {
+            latestQR = '';
+            console.log(`[✅ ${config.id}] Conexão estabelecida com sucesso!`);
+            globalSock = sock;
+            
+            if (!reminderInterval) {
+                reminderInterval = startReminders(config, sock);
+            }
+
+            try {
+                await masterSupabase.from('instances').update({ 
+                    last_connection: new Date().toISOString() 
+                }).eq('slug', config.id);
+            } catch (e) {
+                console.error(`[⚠️ ${config.id}] Falha ao atualizar timestamp no banco master`);
             }
         }
     });
