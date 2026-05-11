@@ -1,3 +1,10 @@
-node_modules/
-auth_info_baileys/
+node_modules
+dist
 .env
+data/instances/*.json
+sessions/
+auth_info/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
