@@ -296,12 +296,16 @@ async function connectToWhatsApp() {
             if (statusCode === DisconnectReason.loggedOut) {
                 console.log(`[🚪 ${config.id}] Logout detectado. Limpando sessão e reiniciando...`);
                 const sessionPath = path.resolve(config.sessionFolder || `sessions/${config.id}`);
-                if (fs.existsSync(sessionPath)) {
-                    fs.rmSync(sessionPath, { recursive: true, force: true });
-                }
-            }
-
-            if (shouldReconnect) {
+                try {
+                    if (fs.existsSync(sessionPath)) {
+                        fs.rmSync(sessionPath, { recursive: true, force: true });
+                    }
+                } catch (e) {}
+                
+                // Força a reconexão para gerar um novo QR Code
+                console.log(`[🔄 ${config.id}] Iniciando nova tentativa de conexão para gerar QR...`);
+                setTimeout(connectToWhatsApp, 5000);
+            } else if (shouldReconnect) {
                 setTimeout(connectToWhatsApp, 3000);
             }
         } else if (connection === 'open') {
@@ -683,15 +687,17 @@ async function connectToWhatsApp() {
                 return;
             }
 
-            // Redirecionamento para Tatuagens no Estúdio Dyoli
+            // Fluxo de Tatuagem para Dyoli (Julie) - Ficha de Anamnese e Detalhes
             if (config.id === 'dyoli' && (servico.categoria === 'Tatuagens' || servico.category === 'Tatuagens')) {
                 await sendMsg(
                     `🎨 *TATUAGEM - Dyoli Godim*\n\n` +
                     `Que legal que você tem interesse em uma tatuagem! 💖\n\n` +
-                    `Como cada arte é única, a *Dyoli* precisa conversar pessoalmente com você para entender a ideia, o tamanho e o local da tattoo para te passar o orçamento certinho.\n\n` +
-                    `*Aguarde um instante que ela já vai te atender para combinarem os detalhes!* ⏳`
+                    `Antes de continuarmos, precisamos preencher uma rápida *ficha de anamnese* por segurança.\n\n` +
+                    `📝 *Ficha de Anamnese:*\n` +
+                    `Você possui alguma alergia, problema de saúde, doença crônica ou faz uso de medicamentos contínuos?\n\n` +
+                    `_Por favor, descreva abaixo ou digite "Não" para prosseguir._`
                 );
-                await setState({ state: 'WAITING_HUMAN' });
+                await setState({ state: 'TATTOO_ANAMNESE', servico });
                 return;
             }
 
@@ -1135,6 +1141,36 @@ async function connectToWhatsApp() {
             return;
         }
 
+        // ── Fluxo de Tatuagem: Anamnese ──
+        if (currentState === 'TATTOO_ANAMNESE') {
+            if (incomingText === '0') { await setState({ state: 'START' }); return; }
+            
+            // Salva a resposta da anamnese e pede os detalhes da tattoo
+            await setState({ ...rawState, state: 'TATTOO_DETAILS', anamnese: incomingText });
+            await sendMsg(
+                `Obrigado pelas informações! ✅\n\n` +
+                `Agora, por favor, *descreva a tatuagem* que você deseja (ideia, local do corpo, tamanho aproximado) e, se possível, envie uma ou mais *fotos de referência* aqui no chat.`
+            );
+            return;
+        }
+
+        // ── Fluxo de Tatuagem: Detalhes e Fotos ──
+        if (currentState === 'TATTOO_DETAILS') {
+            if (incomingText === '0') { await setState({ state: 'START' }); return; }
+
+            const hasImage = !!(msg.message?.imageMessage || msg.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage);
+            
+            await sendMsg(
+                `Perfeito! Recebemos seus detalhes ${hasImage ? 'e imagens ' : ''}com sucesso. ✨\n\n` +
+                `A *Dyoli* já vai analisar tudo e te chamar aqui para combinarem os detalhes finais e passar o orçamento.\n\n` +
+                `*Aguarde um instante!* ⏳`
+            );
+            
+            // Transferência final para atendimento humano
+            await setState({ state: 'WAITING_HUMAN' });
+            return;
+        }
+
         // ── Dúvidas e Cuidados (IA) ──
         if (currentState === 'AI_CHATTING') {
             if (incomingText === '0') {
@@ -1215,24 +1251,44 @@ app.get('/api/status', async (req, res) => {
 app.post('/api/logout', async (req, res) => {
     try {
         console.log(`[🔌 ${config.id}] Recebido pedido de logout remoto...`);
+        
+        // Se já estiver deslogado, nem tenta o logout do Baileys para evitar erro
         if (globalSock) {
-            await globalSock.logout();
+            try {
+                // Se não houver usuário, provavelmente já está deslogado
+                if (globalSock.user) {
+                    await globalSock.logout();
+                } else {
+                    console.log(`[🔌 ${config.id}] Socket existe mas sem usuário. Ignorando logout do Baileys.`);
+                }
+            } catch (logoutErr: any) {
+                console.warn(`[⚠️ ${config.id}] Erro ao tentar logout do Baileys (provavelmente já desconectado):`, logoutErr.message);
+            }
         }
         
         // Remove a pasta da sessão para garantir limpeza total
-        const sessionPath = config.sessionFolder || `sessions/${config.id}`;
-        if (fs.existsSync(sessionPath)) {
-            fs.rmSync(sessionPath, { recursive: true, force: true });
+        const sessionPath = path.resolve(config.sessionFolder || `sessions/${config.id}`);
+        try {
+            if (fs.existsSync(sessionPath)) {
+                console.log(`[🧹 ${config.id}] Removendo pasta da sessão: ${sessionPath}`);
+                fs.rmSync(sessionPath, { recursive: true, force: true });
+            }
+        } catch (rmErr: any) {
+            console.error(`[❌ ${config.id}] Erro ao remover pasta da sessão:`, rmErr.message);
+            // No Windows, às vezes o arquivo está preso. Vamos tentar renomear se falhar? 
+            // Por enquanto só logamos, pois o process.exit(0) deve liberar os handles.
         }
 
         res.json({ success: true, message: 'Desconectado com sucesso. Reiniciando...' });
         
         // Pequeno delay para responder e depois reiniciar
         setTimeout(() => {
-            process.exit(0); // O PM2 vai reiniciar automaticamente
-        }, 1000);
+            console.log(`[🔄 ${config.id}] Reiniciando processo...`);
+            process.exit(0); // O PM2 ou script de loop vai reiniciar
+        }, 1500);
 
     } catch (err: any) {
+        console.error(`[💥 ${config.id}] Erro no endpoint de logout:`, err.message);
         res.status(500).json({ success: false, error: err.message });
     }
 });
