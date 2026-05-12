@@ -988,7 +988,7 @@ async function connectToWhatsApp() {
                         payment_method_id: 'pix',
                         external_reference,
                         payer: { 
-                            email: 'cliente.agendamento@gmail.com',
+                            email: `payer.${Date.now()}@pagamento-bot.com`,
                             first_name: first_name,
                             last_name: last_name,
                             identification: {
