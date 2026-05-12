@@ -1039,9 +1039,14 @@ async function connectToWhatsApp() {
 
                 await setState({ ...rawState, state: 'AWAITING_PAYMENT', payment_id: resposta.id, external_reference, valorPagamento: valorCobrado });
 
-            } catch (err) {
-                console.error("Erro PIX Mercado Pago:", err);
-                await sendMsg("Desculpe, ocorreu um erro ao gerar o PIX. Tente novamente mais tarde.");
+            } catch (err: any) {
+                // Log detalhado para diagnóstico
+                const errMsg = err?.message || String(err);
+                const errCause = err?.cause?.message || '';
+                const errStatus = err?.status || err?.statusCode || '';
+                const errBody = JSON.stringify(err?.cause || err?.response || {});
+                console.error(`[❌ PIX ERRO ${config.id}] status=${errStatus} msg="${errMsg}" cause="${errCause}" body=${errBody}`);
+                await sendMsg(`Desculpe, ocorreu um erro ao gerar o PIX. Tente novamente mais tarde.\n\n_Código: ${errMsg.substring(0, 80)}_`);
                 await setState({ state: 'START' });
             }
             return;
