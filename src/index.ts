@@ -983,16 +983,16 @@ async function connectToWhatsApp() {
 
                 const body = {
                     transaction_amount: Number(valorCobrado.toFixed(2)),
-                    description: `Agendamento: ${servico.nome || servico.name} - ${nome}`,
+                    description: `Agendamento: ${servico.nome || servico.name}`,
                     payment_method_id: 'pix',
                     external_reference,
                     payer: { 
-                        email: 'binarioscompany@gmail.com',
-                        first_name: first_name,
-                        last_name: last_name,
+                        email: `teste.${Date.now()}@agendamento.com`,
+                        first_name: "Cliente",
+                        last_name: "Agendamento",
                         identification: {
                             type: 'CPF',
-                            number: rawState.cpf
+                            number: "05481336000" // CPF genérico para teste
                         }
                     }
                 };
