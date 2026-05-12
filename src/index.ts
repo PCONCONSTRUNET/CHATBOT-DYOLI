@@ -987,12 +987,20 @@ async function connectToWhatsApp() {
                     payment_method_id: 'pix',
                     external_reference,
                     payer: { 
-                        email: `teste.${Date.now()}@agendamento.com`,
-                        first_name: "Cliente",
-                        last_name: "Agendamento",
+                        email: 'binarioscompany@gmail.com',
+                        first_name: first_name,
+                        last_name: last_name,
                         identification: {
                             type: 'CPF',
-                            number: "05481336000" // CPF genérico para teste
+                            number: rawState.cpf
+                        },
+                        address: {
+                            zip_code: '01001000',
+                            street_name: 'Praca da Se',
+                            street_number: '1',
+                            neighborhood: 'Centro',
+                            city: 'Sao Paulo',
+                            federal_unit: 'SP'
                         }
                     }
                 };
