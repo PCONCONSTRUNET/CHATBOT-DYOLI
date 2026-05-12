@@ -981,23 +981,25 @@ async function connectToWhatsApp() {
                 const [first_name, ...last_name_arr] = rawState.nome.split(' ');
                 const last_name = last_name_arr.join(' ') || 'Cliente';
 
-                const resposta = await payment.create({
-                    body: {
-                        transaction_amount: Number(valorCobrado.toFixed(2)),
-                        description: `Agendamento: ${servico.nome || servico.name} - ${nome}`,
-                        payment_method_id: 'pix',
-                        external_reference,
-                        payer: { 
-                            email: `payer.${Date.now()}@pagamento-bot.com`,
-                            first_name: first_name,
-                            last_name: last_name,
-                            identification: {
-                                type: 'CPF',
-                                number: rawState.cpf || '19119119100'
-                            }
+                const body = {
+                    transaction_amount: Number(valorCobrado.toFixed(2)),
+                    description: `Agendamento: ${servico.nome || servico.name} - ${nome}`,
+                    payment_method_id: 'pix',
+                    external_reference,
+                    payer: { 
+                        email: `cliente.${Date.now()}@outlook.com`,
+                        first_name: first_name,
+                        last_name: last_name,
+                        identification: {
+                            type: 'CPF',
+                            number: rawState.cpf
                         }
                     }
-                });
+                };
+
+                console.log(`[📨 MP REQ ${config.id}] Body:`, JSON.stringify(body));
+
+                const resposta = await payment.create({ body });
 
                 const copiaECola = resposta.point_of_interaction?.transaction_data?.qr_code;
 
