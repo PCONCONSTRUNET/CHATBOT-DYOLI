@@ -983,24 +983,14 @@ async function connectToWhatsApp() {
 
                 const body = {
                     transaction_amount: Number(valorCobrado.toFixed(2)),
-                    description: `Agendamento: ${servico.nome || servico.name}`,
+                    description: `PCON PIX`,
                     payment_method_id: 'pix',
                     external_reference,
                     payer: { 
                         email: 'binarioscompany@gmail.com',
-                        first_name: first_name,
-                        last_name: last_name,
                         identification: {
                             type: 'CPF',
                             number: rawState.cpf
-                        },
-                        address: {
-                            zip_code: '01001000',
-                            street_name: 'Praca da Se',
-                            street_number: '1',
-                            neighborhood: 'Centro',
-                            city: 'Sao Paulo',
-                            federal_unit: 'SP'
                         }
                     }
                 };
