@@ -988,6 +988,8 @@ async function connectToWhatsApp() {
                     external_reference,
                     payer: { 
                         email: 'binarioscompany@gmail.com',
+                        first_name: first_name,
+                        last_name: last_name,
                         identification: {
                             type: 'CPF',
                             number: rawState.cpf
