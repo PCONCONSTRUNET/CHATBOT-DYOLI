@@ -326,6 +326,7 @@ async function connectToWhatsApp() {
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('messages.upsert', async (m) => {
+        console.log(`[DEBUG MSG UPSERT] type: ${m.type}, messages length: ${m.messages?.length}`);
         // ✅ Só processa mensagens novas (type 'notify'), ignora histórico
         if (m.type !== 'notify') return;
         if (!m.messages || m.messages.length === 0) return;
@@ -336,7 +337,7 @@ async function connectToWhatsApp() {
         try {
 
         // 🚫 BLOQUEIO DE GRUPOS E COMUNIDADES: Só processa se for chat privado
-        if (!msg.key.remoteJid?.endsWith('@s.whatsapp.net')) {
+        if (!msg.key.remoteJid?.endsWith('@s.whatsapp.net') && !msg.key.remoteJid?.endsWith('@lid')) {
             return;
         }
 
@@ -351,7 +352,8 @@ async function connectToWhatsApp() {
         if (!remoteJid) return;
 
         let incomingText = (msg.message.conversation || msg.message.extendedTextMessage?.text || '').trim();
-        
+        console.log(`[📥 MENSAGEM] De ${remoteJid}: "${incomingText}"`);
+
         // ── COMANDO DA ATENDENTE (atendimento finalizado) ──
         // Se a mensagem partiu de você (dona) e for o comando, reseta o estado do cliente
         if (msg.key.fromMe) {
@@ -872,7 +874,7 @@ async function connectToWhatsApp() {
             return;
         }
 
-        // ── ETAPA 4: Coleta nome e pergunta forma de pagamento ──
+        // ── ETAPA 4: Coleta nome e pergunta CPF ──
         if (currentState === 'GET_NAME') {
             if (incomingText === '0') { await setState({ state: 'START' }); return; }
 
@@ -884,19 +886,39 @@ async function connectToWhatsApp() {
                 return;
             }
 
+            await sendMsg(
+                `Perfeito, ${nome}! Agora, por favor, me informe o seu *CPF* (apenas números) para podermos gerar a chave PIX do seu agendamento.\n\n` +
+                `_Digite *0* para cancelar._`
+            );
+
+            await setState({ ...rawState, state: 'GET_CPF', nome });
+            return;
+        }
+
+        // ── ETAPA 4.1: Coleta CPF e pergunta forma de pagamento ──
+        if (currentState === 'GET_CPF') {
+            if (incomingText === '0') { await setState({ state: 'START' }); return; }
+
+            let cpf = incomingText.replace(/\D/g, '');
+            if (cpf.length !== 11) {
+                await sendMsg('CPF inválido. Por favor, digite apenas os 11 números do seu CPF.');
+                return;
+            }
+
+            const { servico, nome } = rawState;
             const valorTotal = parseFloat(servico.preco || servico.price || 0);
             const sinal = (valorTotal * 0.2).toFixed(2).replace('.', ',');
             const total = valorTotal.toFixed(2).replace('.', ',');
 
             await sendMsg(
-                `Ótimo, ${nome}! Para confirmar sua vaga, precisamos que você realize o pagamento via PIX.\n\n` +
+                `Ótimo! Para confirmar sua vaga, precisamos que você realize o pagamento via PIX.\n\n` +
                 `Como você prefere pagar?\n\n` +
                 `*1.* Sinal de 20% (R$ ${sinal}) e o restante no dia.\n` +
                 `*2.* Valor Total (R$ ${total}).\n\n` +
                 `_Digite *1* ou *2*, ou *0* para cancelar._`
             );
 
-            await setState({ ...rawState, state: 'SELECT_PAYMENT_TYPE', nome });
+            await setState({ ...rawState, state: 'SELECT_PAYMENT_TYPE', cpf });
             return;
         }
 
@@ -956,13 +978,24 @@ async function connectToWhatsApp() {
 
                 const external_reference = `AGEN_${config.id}_${Date.now()}`;
 
+                const [first_name, ...last_name_arr] = rawState.nome.split(' ');
+                const last_name = last_name_arr.join(' ') || 'Cliente';
+
                 const resposta = await payment.create({
                     body: {
                         transaction_amount: Number(valorCobrado.toFixed(2)),
                         description: `Agendamento: ${servico.nome || servico.name} - ${nome}`,
                         payment_method_id: 'pix',
                         external_reference,
-                        payer: { email: 'cliente@bot.com' }
+                        payer: { 
+                            email: 'cliente@bot.com',
+                            first_name: first_name,
+                            last_name: last_name,
+                            identification: {
+                                type: 'CPF',
+                                number: rawState.cpf || '19119119100'
+                            }
+                        }
                     }
                 });
 

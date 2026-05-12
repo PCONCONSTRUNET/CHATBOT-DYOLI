@@ -22,7 +22,15 @@ export function createPaymentClients(config: InstanceConfig) {
                 description: descricao,
                 payment_method_id: 'pix',
                 ...(external_reference ? { external_reference } : {}),
-                payer: { email },
+                payer: { 
+                    email,
+                    first_name: "Cliente",
+                    last_name: "P-CON",
+                    identification: {
+                        type: "CPF",
+                        number: "12345678909"
+                    }
+                }
             }
         });
         return {
