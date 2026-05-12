@@ -983,7 +983,7 @@ async function connectToWhatsApp() {
 
                 const body = {
                     transaction_amount: Number(valorCobrado.toFixed(2)),
-                    description: `PCON PIX`,
+                    description: `Agendamento - ${config.name}`,
                     payment_method_id: 'pix',
                     external_reference,
                     payer: { 
@@ -995,9 +995,14 @@ async function connectToWhatsApp() {
                     }
                 };
 
-                console.log(`[📨 MP REQ ${config.id}] Body:`, JSON.stringify(body));
+                // Log para verificar se o token está carregando (mostra só o início por segurança)
+                const tokenCheck = config.mercadopagoAccessToken ? `${config.mercadopagoAccessToken.substring(0, 15)}...` : 'NÃO CARREGADO';
+                console.log(`[📨 MP REQ ${config.id}] Token: ${tokenCheck} | Body:`, JSON.stringify(body));
 
-                const resposta = await payment.create({ body });
+                const resposta = await payment.create({ 
+                    body,
+                    requestOptions: { idempotencyKey: `idemp-${Date.now()}` }
+                });
 
                 const copiaECola = resposta.point_of_interaction?.transaction_data?.qr_code;
 
