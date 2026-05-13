@@ -644,6 +644,20 @@ async function connectToWhatsApp() {
                 return;
             }
 
+            // Caso especial: Tatuagem para Dyoli (Pular lista de serviços e ir para Anamnese)
+            if (config.id === 'dyoli' && category.toLowerCase().includes('tatuag')) {
+                await sendMsg(
+                    `🎨 *TATUAGEM - Dyoli Godim*\n\n` +
+                    `Que legal que você tem interesse em uma tatuagem! 💖\n\n` +
+                    `Para sua segurança e para darmos continuidade, precisamos que você preencha nossa *FICHA DE ANAMNESE*:\n\n` +
+                    `📝 *QUESTÕES DE SAÚDE:*\n` +
+                    `Você possui alguma alergia, problema de saúde, doença crônica ou faz uso de medicamentos contínuos?\n\n` +
+                    `👉 *Por favor, descreva sua situação aqui abaixo* ou digite *"Não"* caso não possua nenhuma das condições acima.`
+                );
+                await setState({ state: 'TATTOO_ANAMNESE' });
+                return;
+            }
+
             const filteredServices = servicos.filter((s: any) => (s.categoria || 'Outros') === category);
             
             let listMsg = `✨ *${category.toUpperCase()}* ✨\n\n${SEPARATOR}\n`;
@@ -688,7 +702,12 @@ async function connectToWhatsApp() {
             }
 
             // Fluxo de Tatuagem para Dyoli (Julie) - Ficha de Anamnese e Detalhes
-            if (config.id === 'dyoli' && (servico.categoria === 'Tatuagens' || servico.category === 'Tatuagens')) {
+            const isTattoo = (servico.categoria || '').toLowerCase().includes('tatuag') || 
+                             (servico.category || '').toLowerCase().includes('tatuag') ||
+                             (servico.nome || '').toLowerCase().includes('tatuag') ||
+                             (servico.name || '').toLowerCase().includes('tatuag');
+
+            if (config.id === 'dyoli' && isTattoo) {
                 await sendMsg(
                     `🎨 *TATUAGEM - Dyoli Godim*\n\n` +
                     `Que legal que você tem interesse em uma tatuagem! 💖\n\n` +
@@ -1145,11 +1164,24 @@ async function connectToWhatsApp() {
         if (currentState === 'TATTOO_ANAMNESE') {
             if (incomingText === '0') { await setState({ state: 'START' }); return; }
             
+            const anamnese = incomingText.toLowerCase();
+            const hasAllergy = anamnese !== 'não' && anamnese !== 'nao' && anamnese !== 'n' && anamnese.length > 1;
+
+            let msgAgradecimento = `Obrigado pelas informações! ✅`;
+            if (hasAllergy) {
+                msgAgradecimento = `Entendi. Agradecemos por informar esses detalhes sobre sua saúde, a *Dyoli* analisará com cuidado por segurança. ✅`;
+            }
+
             // Salva a resposta da anamnese e pede os detalhes da tattoo
             await setState({ ...rawState, state: 'TATTOO_DETAILS', anamnese: incomingText });
             await sendMsg(
-                `Obrigado pelas informações! ✅\n\n` +
-                `Agora, por favor, *descreva a tatuagem* que você deseja (ideia, local do corpo, tamanho aproximado) e, se possível, envie uma ou mais *fotos de referência* aqui no chat.`
+                `${msgAgradecimento}\n\n` +
+                `Agora, por favor, preencha esta rápida *FICHA DA TATUAGEM*:\n\n` +
+                `1. *O que deseja tatuar?* (ideia/desenho)\n` +
+                `2. *Local do corpo*\n` +
+                `3. *Tamanho aproximado* (em cm)\n\n` +
+                `📸 E, se possível, envie uma ou mais *fotos de referência* aqui no chat.\n\n` +
+                `_Pode descrever tudo em uma única mensagem._`
             );
             return;
         }
@@ -1158,12 +1190,12 @@ async function connectToWhatsApp() {
         if (currentState === 'TATTOO_DETAILS') {
             if (incomingText === '0') { await setState({ state: 'START' }); return; }
 
-            const hasImage = !!(msg.message?.imageMessage || msg.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage);
+            const hasImage = !!(msg.message?.imageMessage || msg.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage || msg.message?.videoMessage);
             
             await sendMsg(
                 `Perfeito! Recebemos seus detalhes ${hasImage ? 'e imagens ' : ''}com sucesso. ✨\n\n` +
-                `A *Dyoli* já vai analisar tudo e te chamar aqui para combinarem os detalhes finais e passar o orçamento.\n\n` +
-                `*Aguarde um instante!* ⏳`
+                `A *Dyoli* já vai analisar tudo e te chamar aqui em breve para conversarem sobre o orçamento e detalhes finais.\n\n` +
+                `*Aguarde um instante enquanto encerramos o atendimento automático...* ⏳`
             );
             
             // Transferência final para atendimento humano
