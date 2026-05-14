@@ -9,12 +9,14 @@ import express from 'express';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
+import axios from 'axios';
 import { createLovableClient } from './lovable-factory.js';
 import { createPaymentClients } from './payments-factory.js';
 import { loadInstanceConfig, loadConfigFromDb } from './config.js';
 import type { InstanceConfig } from './config.js';
 import { startReminders } from './reminders.js';
 import { SEPARATOR, formatMsg } from './utils.js';
+import { generateAnamnesisPDF, uploadAnamnesis } from './pdf-service.js';
 
 // Pega o argumento (caminho JSON ou slug do banco)
 const configPath = process.argv[2];
@@ -650,9 +652,9 @@ async function connectToWhatsApp() {
                     `🎨 *TATUAGEM - Dyoli Godim*\n\n` +
                     `Que legal que você tem interesse em uma tatuagem! 💖\n\n` +
                     `Para sua segurança e para darmos continuidade, precisamos que você preencha nossa *FICHA DE ANAMNESE*:\n\n` +
-                    `📝 *QUESTÕES DE SAÚDE:*\n` +
-                    `Você possui alguma alergia, problema de saúde, doença crônica ou faz uso de medicamentos contínuos?\n\n` +
-                    `👉 *Por favor, descreva sua situação aqui abaixo* ou digite *"Não"* caso não possua nenhuma das condições acima.`
+                    `📝 *SAÚDE E SEGURANÇA:*\n` +
+                    `Você possui alergia ou alguma dessas condições: Gravidez, Diabetes, Problemas Cardíacos, Circulatórios ou Respiratórios, Asma, Câncer, Herpes ou Doenças Infectocontagiosas? Faz uso de medicação contínua?\n\n` +
+                    `👉 *Descreva sua situação abaixo* ou digite *"Não"* caso não possua nada.`
                 );
                 await setState({ state: 'TATTOO_ANAMNESE' });
                 return;
@@ -701,21 +703,27 @@ async function connectToWhatsApp() {
                 return;
             }
 
-            // Fluxo de Tatuagem para Dyoli (Julie) - Ficha de Anamnese e Detalhes
-            const isTattoo = (servico.categoria || '').toLowerCase().includes('tatuag') || 
-                             (servico.category || '').toLowerCase().includes('tatuag') ||
-                             (servico.nome || '').toLowerCase().includes('tatuag') ||
-                             (servico.name || '').toLowerCase().includes('tatuag');
+            // Fluxo Especial para Dyoli (Tattoo, Piercing, Micropigmentação) - Anamnese
+            const categoryName = (servico.categoria || servico.category || '').toLowerCase();
+            const serviceName = (servico.nome || servico.name || '').toLowerCase();
+            
+            const isTattoo = categoryName.includes('tatuag') || serviceName.includes('tatuag');
+            const isPiercing = categoryName.includes('piercing') || serviceName.includes('piercing');
+            const isMicro = categoryName.includes('micropig') || serviceName.includes('micropig');
 
-            if (config.id === 'dyoli' && isTattoo) {
-                await sendMsg(
-                    `🎨 *TATUAGEM - Dyoli Godim*\n\n` +
-                    `Que legal que você tem interesse em uma tatuagem! 💖\n\n` +
-                    `Antes de continuarmos, precisamos preencher uma rápida *ficha de anamnese* por segurança.\n\n` +
-                    `📝 *Ficha de Anamnese:*\n` +
-                    `Você possui alguma alergia, problema de saúde, doença crônica ou faz uso de medicamentos contínuos?\n\n` +
-                    `_Por favor, descreva abaixo ou digite "Não" para prosseguir._`
-                );
+            if (config.id === 'dyoli' && (isTattoo || isPiercing || isMicro)) {
+                let anamneseMsg = `✨ *${(servico.nome || servico.name).toUpperCase()}*\n\n` +
+                    `Excelente escolha! 💖 Para sua segurança, precisamos preencher uma rápida *ficha de anamnese*:\n\n` +
+                    `📝 *SAÚDE E SEGURANÇA:*\n` +
+                    `Você possui alergia ou alguma dessas condições: Gravidez, Diabetes, Problemas Cardíacos, Circulatórios ou Respiratórios, Asma, Câncer, Herpes ou Doenças Infectocontagiosas? Faz uso de medicação contínua?\n\n`;
+
+                if (serviceName.includes('labial')) {
+                    anamneseMsg += `⚠️ *AVISO:* Para Micropigmentação Labial, é necessário o uso de *Aciclovir (8/8h por 3 dias antes)*. Você confirma que fará o uso?\n\n`;
+                }
+
+                anamneseMsg += `👉 *Descreva sua situação abaixo* ou digite *"Não"* caso não possua nada.`;
+
+                await sendMsg(anamneseMsg);
                 await setState({ state: 'TATTOO_ANAMNESE', servico });
                 return;
             }
@@ -909,6 +917,11 @@ async function connectToWhatsApp() {
             if (nome.length < 3) {
                 await sendMsg('Por favor, informe seu *nome completo*.');
                 return;
+            }
+
+            // Se houver anamnese preenchida, gera o PDF agora que temos o nome
+            if (rawState.anamnese) {
+                saveAnamnesisRecord(rawState, nome, userPhone).catch(err => console.error('Erro ao gerar PDF de anamnese:', err));
             }
 
             await sendMsg(
@@ -1160,7 +1173,7 @@ async function connectToWhatsApp() {
             return;
         }
 
-        // ── Fluxo de Tatuagem: Anamnese ──
+        // ── Fluxo de Tatuagem/Piercing/Micro: Anamnese ──
         if (currentState === 'TATTOO_ANAMNESE') {
             if (incomingText === '0') { await setState({ state: 'START' }); return; }
             
@@ -1172,17 +1185,41 @@ async function connectToWhatsApp() {
                 msgAgradecimento = `Entendi. Agradecemos por informar esses detalhes sobre sua saúde, a *Dyoli* analisará com cuidado por segurança. ✅`;
             }
 
-            // Salva a resposta da anamnese e pede os detalhes da tattoo
-            await setState({ ...rawState, state: 'TATTOO_DETAILS', anamnese: incomingText });
-            await sendMsg(
-                `${msgAgradecimento}\n\n` +
-                `Agora, por favor, preencha esta rápida *FICHA DA TATUAGEM*:\n\n` +
-                `1. *O que deseja tatuar?* (ideia/desenho)\n` +
-                `2. *Local do corpo*\n` +
-                `3. *Tamanho aproximado* (em cm)\n\n` +
-                `📸 E, se possível, envie uma ou mais *fotos de referência* aqui no chat.\n\n` +
-                `_Pode descrever tudo em uma única mensagem._`
-            );
+            const servico = rawState.servico;
+            const categoryName = (servico?.categoria || servico?.category || '').toLowerCase();
+            const serviceName = (servico?.nome || servico?.name || '').toLowerCase();
+            const isTattoo = !servico || categoryName.includes('tatuag') || serviceName.includes('tatuag');
+
+            if (isTattoo) {
+                // Salva a resposta da anamnese e pede os detalhes da tattoo
+                await setState({ ...rawState, state: 'TATTOO_DETAILS', anamnese: incomingText });
+                await sendMsg(
+                    `${msgAgradecimento}\n\n` +
+                    `Agora, por favor, preencha esta rápida *FICHA DA TATUAGEM*:\n\n` +
+                    `1. *O que deseja tatuar?* (ideia/desenho)\n` +
+                    `2. *Local do corpo*\n` +
+                    `3. *Tamanho aproximado* (em cm)\n\n` +
+                    `📸 E, se possível, envie uma ou mais *fotos de referência* aqui no chat.\n\n` +
+                    `_Pode descrever tudo em uma única mensagem._`
+                );
+            } else {
+                // Piercing ou Micropigmentação - Segue para agendamento automático
+                const nome = servico.nome || servico.name || 'Procedimento';
+                const valor = servico.preco || servico.price || 0;
+                const preco = parseFloat(valor).toFixed(2).replace('.', ',');
+
+                await sendMsg(msgAgradecimento);
+                await sendMsg(
+                    `✨ *${nome.toUpperCase()}*\n` +
+                    `💰 Valor: R$ ${preco}\n\n` +
+                    `${SEPARATOR}\n\n` +
+                    `📅 Para qual *data* você quer agendar?\n\n` +
+                    `Digite no formato *DD/MM* (ex: 10/05)\n` +
+                    `ou responda *Hoje* ou *Amanhã*.\n\n` +
+                    `_Digite *0* para voltar._`
+                );
+                await setState({ ...rawState, state: 'SELECT_DATE', anamnese: incomingText });
+            }
             return;
         }
 
@@ -1198,6 +1235,12 @@ async function connectToWhatsApp() {
                 `*Aguarde um instante enquanto encerramos o atendimento automático...* ⏳`
             );
             
+            // Gerar PDF de anamnese (mesmo sem nome oficial, usamos o pushName do WhatsApp)
+            const pushName = msg.pushName || 'Cliente WhatsApp';
+            const customerPhone = userPhone;
+            
+            saveAnamnesisRecord(rawState, pushName, customerPhone).catch(err => console.error('Erro ao gerar PDF de anamnese:', err));
+
             // Transferência final para atendimento humano
             await setState({ state: 'WAITING_HUMAN' });
             return;
@@ -1251,6 +1294,65 @@ async function connectToWhatsApp() {
             console.error(handlerErr?.stack || '');
         }
     });
+}
+
+/**
+ * Helper para gerar PDF e salvar registro de anamnese
+ */
+/**
+ * Helper para gerar PDF e enviar registro de anamnese via Edge Function
+ */
+async function saveAnamnesisRecord(rawState: any, customerName: string, customerPhone: string) {
+    if (!rawState.anamnese) return null;
+    
+    try {
+        const { generateAnamnesisPDF } = await import('./pdf-service.js');
+        const serviceName = rawState.servico?.nome || rawState.servico?.name || 'Tatuagem';
+        
+        console.log(`[📄 ${config.id}] Gerando PDF e enviando para Edge Function...`);
+        
+        const pdfBuffer = await generateAnamnesisPDF({
+            clientName: customerName,
+            phone: customerPhone,
+            service: serviceName,
+            anamnese: rawState.anamnese,
+            instanceName: config.name || config.id
+        });
+
+        const pdfBase64 = pdfBuffer.toString('base64');
+        const cleanPhone = customerPhone.replace(/\D/g, '');
+        const filename = `anamnese_${config.id}_${cleanPhone}_${Date.now()}.pdf`;
+
+        const body = {
+            whatsapp: customerPhone,
+            cliente_nome: customerName,
+            dados: {
+                servico: serviceName,
+                respostas: rawState.anamnese,
+                instancia: config.id,
+                data_preenchimento: new Date().toISOString()
+            },
+            pdf_base64: pdfBase64,
+            pdf_filename: filename,
+            observacao: `Bot - ${config.name || config.id}`
+        };
+
+        const endpoint = `${process.env.SUPABASE_FUNCTIONS_URL}/bot-anamnese`;
+        
+        const response = await axios.post(endpoint, body, {
+            headers: {
+                'Content-Type': 'application/json',
+                'x-bot-secret': config.botApiSecret
+            }
+        });
+
+        console.log(`[✅ ${config.id}] Anamnese enviada com sucesso para Edge Function!`);
+        return true;
+    } catch (err: any) {
+        const errorDetail = err.response?.data || err.message;
+        console.error(`[❌ ${config.id}] Erro ao enviar anamnese para Edge Function:`, errorDetail);
+        return null;
+    }
 }
 
 app.get('/api/status', async (req, res) => {

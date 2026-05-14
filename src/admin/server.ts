@@ -165,6 +165,20 @@ app.get('/api/logs', authenticate, (req, res) => {
     });
 });
 
+// Listar Fichas de Anamnese
+app.get('/api/anamnesis', authenticate, async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('anamnesis')
+            .select('*')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        res.json(data);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Salvar/Editar Instância
 app.post('/api/instances/save', authenticate, async (req, res) => {
     try {
