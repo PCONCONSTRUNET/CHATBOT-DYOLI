@@ -248,22 +248,22 @@ async function connectToWhatsApp() {
     const supabase = createClient(config.supabaseUrl, config.supabaseKey);
     (sock as any).supabase = supabase;
 
-    // Função auxiliar para enviar mensagem com "falso digitando"
+    // Função auxiliar para enviar mensagem com "falso digitando" mais rápido
     const sendWithTyping = async (jid: string, content: any, options: any = {}) => {
         try {
-            // Precisa inscrever na presença do JID antes de mostrar "digitando"
             await sock.presenceSubscribe(jid);
             await sock.sendPresenceUpdate('available', jid);
-            await delay(200);
+            await delay(100);
             
             await sock.sendPresenceUpdate('composing', jid);
             
             const text = content.text || '';
-            const typingTime = Math.max(1500, Math.min(text.length * 30, 4000));
+            // Digitação mais rápida: 15ms por caractere, entre 0.5s e 2s
+            const typingTime = Math.max(500, Math.min(text.length * 15, 2000));
             await delay(typingTime);
             
             await sock.sendPresenceUpdate('paused', jid);
-            await delay(300);
+            await delay(150);
             return await sock.sendMessage(jid, content, options);
         } catch (e) {
             if (sock?.sendMessage) {
@@ -919,11 +919,6 @@ async function connectToWhatsApp() {
                 return;
             }
 
-            // Se houver anamnese preenchida, gera o PDF agora que temos o nome
-            if (rawState.anamnese) {
-                saveAnamnesisRecord(rawState, nome, userPhone).catch(err => console.error('Erro ao gerar PDF de anamnese:', err));
-            }
-
             await sendMsg(
                 `Perfeito, ${nome}! Agora, por favor, me informe o seu *CPF* (apenas números) para podermos gerar a chave PIX do seu agendamento.\n\n` +
                 `_Digite *0* para cancelar._`
@@ -981,6 +976,11 @@ async function connectToWhatsApp() {
                     await setState({ state: 'START' });
                 }
                 return;
+            }
+
+            // Se houver anamnese preenchida, gera o PDF agora que temos Nome e CPF
+            if (rawState.anamnese) {
+                saveAnamnesisRecord(rawState, nome, userPhone, cpf).catch(err => console.error('Erro ao gerar PDF de anamnese:', err));
             }
 
             const sinal = (valorTotal * 0.2).toFixed(2).replace('.', ',');
@@ -1277,7 +1277,7 @@ async function connectToWhatsApp() {
             const pushName = msg.pushName || 'Cliente WhatsApp';
             const customerPhone = userPhone;
             
-            saveAnamnesisRecord(rawState, pushName, customerPhone).catch(err => console.error('Erro ao gerar PDF de anamnese:', err));
+            saveAnamnesisRecord(rawState, pushName, customerPhone, 'Não informado').catch(err => console.error('Erro ao gerar PDF de anamnese:', err));
 
             // Transferência final para atendimento humano
             await setState({ state: 'WAITING_HUMAN' });
@@ -1340,20 +1340,40 @@ async function connectToWhatsApp() {
 /**
  * Helper para gerar PDF e enviar registro de anamnese via Edge Function
  */
-async function saveAnamnesisRecord(rawState: any, customerName: string, customerPhone: string) {
+async function saveAnamnesisRecord(rawState: any, customerName: string, customerPhone: string, cpf: string = 'Não informado') {
     if (!rawState.anamnese) return null;
     
     try {
         const { generateAnamnesisPDF } = await import('./pdf-service.js');
         const serviceName = rawState.servico?.nome || rawState.servico?.name || 'Tatuagem';
+        const anamneseText = rawState.anamnese;
         
-        console.log(`[📄 ${config.id}] Gerando PDF e enviando para Edge Function...`);
+        console.log(`[📄 ${config.id}] Gerando PDF profissional e enviando para Edge Function...`);
+
+        // Parsing simples das opções de saúde
+        const t = anamneseText.toLowerCase();
+        const healthOptions = {
+            gravidez: t.includes('grávida') || t.includes('gestante') || t.includes('amamentando'),
+            cardiopatia: t.includes('coração') || t.includes('cardíaco') || t.includes('cardiopatia'),
+            diabetes: t.includes('diabete'),
+            circulatorio: t.includes('circulação') || t.includes('varizes') || t.includes('trombose'),
+            respiratorio: t.includes('respiratório') || t.includes('pulmão'),
+            asma: t.includes('asma') || t.includes('bronquite'),
+            depressao: t.includes('depressão') || t.includes('ansiedade'),
+            cancer: t.includes('câncer') || t.includes('tumor'),
+            periodoMenstrual: t.includes('menstru') || t.includes('período'),
+            coagulacao: t.includes('coagulação') || t.includes('sangramento'),
+            herpes: t.includes('herpes'),
+            infectoContagiosas: t.includes('hiv') || t.includes('hepatite') || t.includes('sífilis')
+        };
         
         const pdfBuffer = await generateAnamnesisPDF({
             clientName: customerName,
             phone: customerPhone,
+            cpf: cpf,
             service: serviceName,
-            anamnese: rawState.anamnese,
+            anamneseText: anamneseText,
+            healthOptions: healthOptions,
             instanceName: config.name || config.id
         });
 
@@ -1366,7 +1386,9 @@ async function saveAnamnesisRecord(rawState: any, customerName: string, customer
             cliente_nome: customerName,
             dados: {
                 servico: serviceName,
-                respostas: rawState.anamnese,
+                respostas: anamneseText,
+                cpf: cpf,
+                saude: healthOptions,
                 instancia: config.id,
                 data_preenchimento: new Date().toISOString()
             },
