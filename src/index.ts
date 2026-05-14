@@ -627,7 +627,11 @@ async function connectToWhatsApp() {
 
         // ── ETAPA 0: Escolha da categoria ──
         if (currentState === 'SELECT_CATEGORY') {
-            if (incomingText === '0') { await setState({ state: 'START' }); return; }
+            if (incomingText === '0') { 
+                await sendMsg(getWelcomeMessage());
+                await setState({ state: 'MENU' });
+                return;
+            }
 
             const categories = rawState.categories || [];
             const servicos = rawState.servicos || [];
@@ -690,7 +694,8 @@ async function connectToWhatsApp() {
                     await sendMsg(listMsg);
                     return;
                 }
-                await setState({ state: 'START' }); 
+                await sendMsg(getWelcomeMessage());
+                await setState({ state: 'MENU' }); 
                 return; 
             }
             
@@ -747,7 +752,11 @@ async function connectToWhatsApp() {
 
         // ── ETAPA 2: Escolha da data ──
         if (currentState === 'SELECT_DATE') {
-            if (incomingText === '0') { await setState({ state: 'START' }); return; }
+            if (incomingText === '0') { 
+                await sendMsg(getWelcomeMessage());
+                await setState({ state: 'MENU' });
+                return;
+            }
 
             let dataBR = incomingText.trim();
             let dataISO = '';
@@ -888,13 +897,44 @@ async function connectToWhatsApp() {
                 : (horarioSelecionado.horario || horarioSelecionado.hora || String(horarioSelecionado));
 
             const servico = rawState.servico;
-            const nome = servico.nome || servico.name || 'Procedimento';
+            const nomeServico = servico.nome || servico.name || 'Procedimento';
+            const category = (servico.category || servico.categoria || '').toLowerCase();
+            const lowerNome = nomeServico.toLowerCase();
+
+            // --- NOVO: Gatilho de Anamnese para Piercing e Micro ---
+            if (category.includes('piercing') || category.includes('micro') || lowerNome.includes('piercing') || lowerNome.includes('micro')) {
+                
+                // Aviso específico para Micropigmentação Labial
+                if (lowerNome.includes('labial')) {
+                    await sendMsg(
+                        `⚠️ *AVISO IMPORTANTE (Micropigmentação Labial)*\n\n` +
+                        `Para garantir o melhor resultado e sua segurança, é obrigatório o uso de *Aciclovir (8/8h)* iniciando 3 dias antes do procedimento.\n\n` +
+                        `Você confirma que seguirá esta recomendação?`
+                    );
+                }
+
+                const anamneseMsg = 
+                    `*FICHA DE ANAMNESE (Saúde)*\n\n` +
+                    `Por favor, responda com *Sim* ou *Não* e detalhes se necessário:\n\n` +
+                    `1. Possui alergias? (Esmalte, medicamentos, etc)\n` +
+                    `2. Problemas respiratórios ou cardíacos?\n` +
+                    `3. Diabetes ou Hipertensão?\n` +
+                    `4. Faz uso de algum medicamento contínuo?\n` +
+                    `5. Está grávida ou amamentando?\n` +
+                    `6. Possui alguma doença infectocontagiosa? (HIV, Hepatite, etc)\n\n` +
+                    `_Pode enviar todas as respostas em uma única mensagem._`;
+                
+                await sendMsg(anamneseMsg);
+                await setState({ ...rawState, state: 'TATTOO_ANAMNESE', hora });
+                return;
+            }
+
             const valor = servico.preco || servico.price || 0;
             const preco = parseFloat(valor).toFixed(2).replace('.', ',');
 
             await sendMsg(
                 `✅ *RESUMO DO AGENDAMENTO*\n\n${SEPARATOR}\n\n` +
-                `🎨 *Serviço:* ${nome}\n` +
+                `🎨 *Serviço:* ${nomeServico}\n` +
                 `📅 *Data:* ${rawState.dataBR}\n` +
                 `🕐 *Horário:* ${hora}\n` +
                 `💰 *Valor:* R$ ${preco}\n\n` +
@@ -909,7 +949,11 @@ async function connectToWhatsApp() {
 
         // ── ETAPA 4: Coleta nome e pergunta CPF ──
         if (currentState === 'GET_NAME') {
-            if (incomingText === '0') { await setState({ state: 'START' }); return; }
+            if (incomingText === '0') { 
+                await sendMsg(getWelcomeMessage());
+                await setState({ state: 'MENU' });
+                return;
+            }
 
             const nome = incomingText.trim();
             const { servico, dataISO, dataBR, hora } = rawState;
@@ -930,7 +974,11 @@ async function connectToWhatsApp() {
 
         // ── ETAPA 4.1: Coleta CPF e pergunta forma de pagamento ──
         if (currentState === 'GET_CPF') {
-            if (incomingText === '0') { await setState({ state: 'START' }); return; }
+            if (incomingText === '0') { 
+                await sendMsg(getWelcomeMessage());
+                await setState({ state: 'MENU' });
+                return;
+            }
 
             let cpf = incomingText.replace(/\D/g, '');
             if (cpf.length !== 11) {
@@ -1000,7 +1048,11 @@ async function connectToWhatsApp() {
 
         // ── ETAPA 5: Seleciona pagamento e gera PIX ──
         if (currentState === 'SELECT_PAYMENT_TYPE') {
-            if (incomingText === '0') { await setState({ state: 'START' }); return; }
+            if (incomingText === '0') { 
+                await sendMsg(getWelcomeMessage());
+                await setState({ state: 'MENU' });
+                return;
+            }
 
             if (incomingText !== '1' && incomingText !== '2') {
                 await sendMsg('Por favor, digite *1* para Sinal (20%) ou *2* para Valor Total.');
@@ -1213,7 +1265,11 @@ async function connectToWhatsApp() {
 
         // ── Fluxo de Tatuagem/Piercing/Micro: Anamnese ──
         if (currentState === 'TATTOO_ANAMNESE') {
-            if (incomingText === '0') { await setState({ state: 'START' }); return; }
+            if (incomingText === '0') { 
+                await sendMsg(getWelcomeMessage());
+                await setState({ state: 'MENU' });
+                return; 
+            }
             
             const anamnese = incomingText.toLowerCase();
             const hasAllergy = anamnese !== 'não' && anamnese !== 'nao' && anamnese !== 'n' && anamnese.length > 1;
@@ -1241,29 +1297,55 @@ async function connectToWhatsApp() {
                     `_Pode descrever tudo em uma única mensagem._`
                 );
             } else {
-                // Piercing ou Micropigmentação - Segue para agendamento automático
-                const nome = servico.nome || servico.name || 'Procedimento';
-                const valor = servico.preco || servico.price || 0;
-                const preco = parseFloat(valor).toFixed(2).replace('.', ',');
+                // Piercing ou Micropigmentação
+                
+                // Se já estivermos no meio de um agendamento (temos data e hora), volta para o resumo
+                if (rawState.dataISO && rawState.hora) {
+                    const nomeServico = servico.nome || servico.name || 'Procedimento';
+                    const valor = servico.preco || servico.price || 0;
+                    const preco = parseFloat(valor).toFixed(2).replace('.', ',');
 
-                await sendMsg(msgAgradecimento);
-                await sendMsg(
-                    `✨ *${nome.toUpperCase()}*\n` +
-                    `💰 Valor: R$ ${preco}\n\n` +
-                    `${SEPARATOR}\n\n` +
-                    `📅 Para qual *data* você quer agendar?\n\n` +
-                    `Digite no formato *DD/MM* (ex: 10/05)\n` +
-                    `ou responda *Hoje* ou *Amanhã*.\n\n` +
-                    `_Digite *0* para voltar._`
-                );
-                await setState({ ...rawState, state: 'SELECT_DATE', anamnese: incomingText });
+                    await sendMsg(msgAgradecimento);
+                    await sendMsg(
+                        `✅ *RESUMO DO AGENDAMENTO*\n\n${SEPARATOR}\n\n` +
+                        `🎨 *Serviço:* ${nomeServico}\n` +
+                        `📅 *Data:* ${rawState.dataBR}\n` +
+                        `🕐 *Horário:* ${rawState.hora}\n` +
+                        `💰 *Valor:* R$ ${preco}\n\n` +
+                        `${SEPARATOR}\n\n` +
+                        `Para prosseguir, me diga seu *nome completo*:\n` +
+                        `_(ou *0* para cancelar)_`
+                    );
+                    await setState({ ...rawState, state: 'GET_NAME', anamnese: incomingText });
+                } else {
+                    // Fluxo manual (quando o cliente clica em "Fazer Anamnese" sem agendar antes)
+                    const nome = servico?.nome || servico?.name || 'Procedimento';
+                    const valor = servico?.preco || servico?.price || 0;
+                    const preco = parseFloat(valor).toFixed(2).replace('.', ',');
+
+                    await sendMsg(msgAgradecimento);
+                    await sendMsg(
+                        `✨ *${nome.toUpperCase()}*\n` +
+                        `💰 Valor: R$ ${preco}\n\n` +
+                        `${SEPARATOR}\n\n` +
+                        `📅 Para qual *data* você quer agendar?\n\n` +
+                        `Digite no formato *DD/MM* (ex: 10/05)\n` +
+                        `ou responda *Hoje* ou *Amanhã*.\n\n` +
+                        `_Digite *0* para voltar._`
+                    );
+                    await setState({ ...rawState, state: 'SELECT_DATE', anamnese: incomingText });
+                }
             }
             return;
         }
 
         // ── Fluxo de Tatuagem: Detalhes e Fotos ──
         if (currentState === 'TATTOO_DETAILS') {
-            if (incomingText === '0') { await setState({ state: 'START' }); return; }
+            if (incomingText === '0') { 
+                await sendMsg(getWelcomeMessage());
+                await setState({ state: 'MENU' });
+                return; 
+            }
 
             const hasImage = !!(msg.message?.imageMessage || msg.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage || msg.message?.videoMessage);
             
