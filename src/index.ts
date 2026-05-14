@@ -943,8 +943,46 @@ async function connectToWhatsApp() {
                 return;
             }
 
-            const { servico, nome } = rawState;
+            const { servico, nome, dataISO, dataBR, hora } = rawState;
             const valorTotal = parseFloat(servico.preco || servico.price || 0);
+
+            // Se o valor for 0, finaliza o agendamento direto sem PIX
+            if (valorTotal <= 0) {
+                try {
+                    const whatsapp = userPhone;
+                    const apptData = {
+                        instance_slug: config.id,
+                        customer_whatsapp: whatsapp,
+                        customer_name: nome,
+                        service_id: servico.id,
+                        date: dataISO,
+                        time: hora,
+                        status: 'confirmado',
+                        payment_method: 'cortesia',
+                        amount: 0,
+                        total_amount: 0
+                    };
+
+                    const { error: dbErr } = await masterSupabase.from('appointments').insert([apptData]);
+                    if (dbErr) {
+                        const { instance_slug: _, ...localApptData } = apptData;
+                        await (sock as any).supabase.from('appointments').insert([localApptData]);
+                    }
+
+                    const msgSucesso = `✅ *AGENDAMENTO CONFIRMADO!*\n\n${SEPARATOR}\n\n` +
+                        `Tudo certo, *${nome}*!\nSeu horário está reservado (Cortesía):\n\n` +
+                        `✂️ *Serviço:* ${servico.nome || servico.name}\n📅 *Data:* ${dataBR}\n🕐 *Horário:* ${hora}\n\n` +
+                        `${SEPARATOR}\n_Te esperamos no estúdio! ✨_`;
+
+                    await sendMsg(msgSucesso);
+                    await setState({ state: 'START' });
+                } catch (e) {
+                    await sendMsg('Erro ao finalizar agendamento. Tente novamente.');
+                    await setState({ state: 'START' });
+                }
+                return;
+            }
+
             const sinal = (valorTotal * 0.2).toFixed(2).replace('.', ',');
             const total = valorTotal.toFixed(2).replace('.', ',');
 
