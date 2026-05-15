@@ -1014,9 +1014,13 @@ async function connectToWhatsApp() {
                     }
 
                     // --- NOVO: Gera a anamnese para Cortesia ---
+                    console.log(`[🔎 DEBUG] Verificando dados para PDF: Nome=${nome}, CPF=${cpf}, TemAnamnese=${!!rawState.anamnese}`);
+                    
                     if (rawState.anamnese) {
-                        console.log(`[📄 PDF] Gerando anamnese para cortesia...`);
-                        saveAnamnesisRecord(rawState, nome, userPhone, cpf).catch(err => console.error('Erro ao gerar PDF de anamnese:', err));
+                        console.log(`[📄 PDF] Iniciando processo de PDF para Cortesia...`);
+                        await saveAnamnesisRecord(rawState, nome, userPhone, cpf);
+                    } else {
+                        console.warn(`[⚠️ PDF] Abortando PDF: rawState.anamnese está vazio.`);
                     }
 
                     const msgSucesso = `✅ *AGENDAMENTO CONFIRMADO!*\n\n${SEPARATOR}\n\n` +
