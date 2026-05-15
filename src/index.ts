@@ -1462,21 +1462,26 @@ async function saveAnamnesisRecord(rawState: any, customerName: string, customer
         
         console.log(`[📄 ${config.id}] Gerando PDF profissional e enviando para Edge Function...`);
 
-        // Parsing simples das opções de saúde
-        const t = anamneseText.toLowerCase();
+        // Normalização e Parsing inteligente das opções de saúde
+        const t = anamneseText.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, "");
+        const check = (keywords: string[]) => keywords.some(kw => {
+            const normalizedKw = kw.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
+            return t.includes(normalizedKw);
+        });
+
         const healthOptions = {
-            gravidez: t.includes('grávida') || t.includes('gestante') || t.includes('amamentando'),
-            cardiopatia: t.includes('coração') || t.includes('cardíaco') || t.includes('cardiopatia'),
-            diabetes: t.includes('diabete'),
-            circulatorio: t.includes('circulação') || t.includes('varizes') || t.includes('trombose'),
-            respiratorio: t.includes('respiratório') || t.includes('pulmão'),
-            asma: t.includes('asma') || t.includes('bronquite'),
-            depressao: t.includes('depressão') || t.includes('ansiedade'),
-            cancer: t.includes('câncer') || t.includes('tumor'),
-            periodoMenstrual: t.includes('menstru') || t.includes('período'),
-            coagulacao: t.includes('coagulação') || t.includes('sangramento'),
-            herpes: t.includes('herpes'),
-            infectoContagiosas: t.includes('hiv') || t.includes('hepatite') || t.includes('sífilis')
+            gravidez: check(['grávida', 'gestante', 'amamentando', 'gravida']),
+            cardiopatia: check(['coração', 'cardíaco', 'cardiopatia', 'coracao', 'cardiaco']),
+            diabetes: check(['diabete', 'açúcar', 'acucar']),
+            circulatorio: check(['circulação', 'varizes', 'trombose', 'pressão', 'hipertensão', 'circulacao', 'pressao', 'hipertensao']),
+            respiratorio: check(['respiratório', 'pulmão', 'respiratorio', 'pulmao']),
+            asma: check(['asma', 'bronquite', 'falta de ar']),
+            depressao: check(['depressão', 'ansiedade', 'depressao']),
+            cancer: check(['câncer', 'tumor', 'cancer']),
+            periodoMenstrual: check(['menstru', 'período', 'periodo', 'ciclo']),
+            coagulacao: check(['coagulação', 'sangramento', 'hemof', 'coagulacao']),
+            herpes: check(['herpes']),
+            infectoContagiosas: check(['hiv', 'hepatite', 'sífilis', 'aids', 'sifilis', 'infecto'])
         };
         
         const pdfBuffer = await generateAnamnesisPDF({

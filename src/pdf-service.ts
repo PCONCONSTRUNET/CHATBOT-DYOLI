@@ -37,123 +37,177 @@ export async function generateAnamnesisPDF(data: {
         doc.on('error', reject);
 
         const drawCheckbox = (label: string, checked: boolean, x: number, y: number) => {
-            doc.rect(x, y - 2, 10, 10).stroke();
+            doc.rect(x, y - 2, 12, 12).stroke();
             if (checked) {
-                doc.fontSize(10).text('X', x + 1.5, y - 1);
+                doc.fontSize(11).font('Helvetica-Bold').text('X', x + 2, y - 1);
             }
-            doc.fontSize(9).font('Helvetica').text(label, x + 15, y);
+            doc.fontSize(9).font('Helvetica').text(label, x + 18, y + 1);
+        };
+
+        const drawLine = (x1: number, y1: number, x2: number) => {
+            doc.moveTo(x1, y1).lineTo(x2, y1).stroke();
         };
 
         // --- HEADER ---
-        doc.fontSize(22).font('Helvetica-Bold').text('FICHA DE ANAMNESE', { align: 'center' });
-        doc.moveDown(0.5);
-        doc.fontSize(12).font('Helvetica').text(`Estúdio: ${data.instanceName}`, { align: 'center' });
-        doc.moveDown(1);
+        doc.fontSize(24).font('Helvetica-Bold').text('FICHA DE ANAMNESE', { align: 'center' });
+        doc.moveDown(1.5);
 
-        // --- CLIENT INFO SECTION ---
-        const startY = doc.y;
+        let y = 80;
         doc.fontSize(10);
         
-        // Row 1
-        doc.font('Helvetica-Bold').text('NOME: ', 40, startY, { continued: true }).font('Helvetica').text(data.clientName.toUpperCase());
-        doc.font('Helvetica-Bold').text('FONE: ', 350, startY, { continued: true }).font('Helvetica').text(data.phone);
+        // Linha 1: NOME e FONE
+        doc.font('Helvetica-Bold').text('NOME:', 40, y);
+        drawLine(85, y + 10, 420);
+        doc.font('Helvetica').text(data.clientName.toUpperCase(), 90, y);
         
-        // Row 2
-        doc.moveDown(0.8);
-        const row2Y = doc.y;
-        doc.font('Helvetica-Bold').text('CPF: ', 40, row2Y, { continued: true }).font('Helvetica').text(data.cpf);
-        doc.font('Helvetica-Bold').text('DATA: ', 350, row2Y, { continued: true }).font('Helvetica').text(new Date().toLocaleDateString('pt-BR'));
+        doc.font('Helvetica-Bold').text('FONE:', 430, y);
+        drawLine(470, y + 10, 555);
+        doc.font('Helvetica').text(data.phone, 475, y);
 
-        // Row 3 (Procedimento e Categorias)
-        doc.moveDown(0.8);
-        const row3Y = doc.y;
-        doc.font('Helvetica-Bold').text('PROCEDIMENTO: ', 40, row3Y, { continued: true }).font('Helvetica').text(data.service.toUpperCase());
+        // Linha 2: D. NASCIMENTO, IDADE, CPF
+        y += 25;
+        doc.font('Helvetica-Bold').text('D. NASCIMENTO:', 40, y);
+        drawLine(125, y + 10, 250);
+        doc.font('Helvetica').text('____/____/____', 140, y);
 
-        doc.moveDown(1.2);
-        const catY = doc.y;
+        doc.font('Helvetica-Bold').text('IDADE:', 260, y);
+        drawLine(305, y + 10, 360);
+        doc.font('Helvetica-Bold').text('ANOS', 365, y);
+
+        doc.font('Helvetica-Bold').text('CPF:', 410, y);
+        drawLine(440, y + 10, 555);
+        doc.font('Helvetica').text(data.cpf, 445, y);
+
+        // Linha 3: Categorias e LOCAL
+        y += 25;
         const isTattoo = data.service.toLowerCase().includes('tattoo') || data.service.toLowerCase().includes('tatuagem');
         const isPiercing = data.service.toLowerCase().includes('piercing');
         const isMicro = data.service.toLowerCase().includes('micro');
 
-        drawCheckbox('PIERCING', isPiercing, 40, catY);
-        drawCheckbox('TATTOO', isTattoo, 140, catY);
-        drawCheckbox('MICROPIGMENTAÇÃO', isMicro, 240, catY);
+        drawCheckbox('PIERCING', isPiercing, 40, y);
+        drawCheckbox('TATTOO', isTattoo, 120, y);
+        drawCheckbox('MICROPIGMENTAÇÃO | LOCAL:', isMicro, 200, y);
+        drawLine(360, y + 10, 555);
 
-        doc.moveDown(1.5);
-        doc.moveTo(40, doc.y).lineTo(555, doc.y).stroke();
-        doc.moveDown(1);
+        // Linha 4: AGULHA, LOTE, VALIDADE
+        y += 30;
+        doc.font('Helvetica-Bold').text('AGULHA:', 40, y);
+        drawLine(90, y + 10, 240);
 
-        // --- HEALTH OPTIONS (CHECKBOXES) ---
-        doc.fontSize(11).font('Helvetica-Bold').text('CONDIÇÕES DE SAÚDE:');
-        doc.moveDown(0.8);
+        doc.font('Helvetica-Bold').text('LOTE:', 250, y);
+        drawLine(285, y + 10, 420);
 
-        let cbY = doc.y;
-        const col1 = 50, col2 = 180, col3 = 310, col4 = 440;
+        doc.font('Helvetica-Bold').text('VALIDADE:', 430, y);
+        drawLine(490, y + 10, 555);
 
-        // Line 1
-        drawCheckbox('Gravidez', data.healthOptions.gravidez, col1, cbY);
-        drawCheckbox('Cardiopatia', data.healthOptions.cardiopatia, col2, cbY);
-        drawCheckbox('Diabetes', data.healthOptions.diabetes, col3, cbY);
-        drawCheckbox('Circulatório', data.healthOptions.circulatorio, col4, cbY);
+        // Linha 5: OUTRAS OBSERVAÇÕES
+        y += 25;
+        doc.font('Helvetica-Bold').text('OUTRAS OBSERVAÇÕES:', 40, y);
+        drawLine(165, y + 10, 555);
+        y += 20;
+        drawLine(40, y + 10, 555);
 
-        // Line 2
-        cbY += 20;
-        drawCheckbox('Respiratório', data.healthOptions.respiratorio, col1, cbY);
-        drawCheckbox('Asma', data.healthOptions.asma, col2, cbY);
-        drawCheckbox('Depressão', data.healthOptions.depressao, col3, cbY);
-        drawCheckbox('Câncer', data.healthOptions.cancer, col4, cbY);
+        // Divisor
+        y += 25;
+        drawLine(40, y, 555);
 
-        // Line 3
-        cbY += 20;
-        drawCheckbox('Menstrual', data.healthOptions.periodoMenstrual, col1, cbY);
-        drawCheckbox('Coagulação', data.healthOptions.coagulacao, col2, cbY);
-        drawCheckbox('Herpes', data.healthOptions.herpes, col3, cbY);
-        drawCheckbox('Infecto C.', data.healthOptions.infectoContagiosas, col4, cbY);
+        // --- TABELA DE SAÚDE ---
+        y += 15;
+        const col1 = 40, col2 = 135, col3 = 235, col4 = 350, col5 = 460;
+        
+        // Linha 1 Saúde
+        drawCheckbox('GRAVIDEZ', data.healthOptions.gravidez, col1, y);
+        drawCheckbox('CARDIOPATIA', data.healthOptions.cardiopatia, col2, y);
+        drawCheckbox('DIABETES', data.healthOptions.diabetes, col3, y);
+        drawCheckbox('CIRCULATÓRIO', data.healthOptions.circulatorio, col4, y);
+        drawCheckbox('RESPIRATÓRIO', data.healthOptions.respiratorio, col5, y);
 
-        doc.moveDown(3);
+        // Linha 2 Saúde
+        y += 25;
+        drawCheckbox('ASMA', data.healthOptions.asma, col1, y);
+        drawCheckbox('DEPRESSÃO', data.healthOptions.depressao, col2, y);
+        drawCheckbox('CÂNCER', data.healthOptions.cancer, col3, y);
+        doc.font('Helvetica-Bold').text('PERÍODO MENSTRUAL', col4, y + 1);
+        drawCheckbox('', data.healthOptions.periodoMenstrual, 475, y);
+        drawCheckbox('COAGULAÇÃO', 505, y); // Label depois
+        drawCheckbox('', data.healthOptions.coagulacao, col5 + 75, y);
+        
+        // Ajuste manual para alinhar com a foto (COAGULAÇÃO ficou apertado)
+        // Vamos reorganizar as colunas para caber igual à foto
+        y -= 25; // Volta pra linha 1
+        y += 25; // Linha 2
+        drawCheckbox('ASMA', data.healthOptions.asma, 40, y);
+        drawCheckbox('DEPRESSÃO', data.healthOptions.depressao, 105, y);
+        drawCheckbox('CÂNCER', data.healthOptions.cancer, 195, y);
+        doc.font('Helvetica-Bold').text('PERÍODO MENSTRUAL', 270, y + 1);
+        drawCheckbox('', data.healthOptions.periodoMenstrual, 385, y);
+        doc.font('Helvetica-Bold').text('COAGULAÇÃO', 415, y + 1);
+        drawCheckbox('', data.healthOptions.coagulacao, 500, y);
 
-        // --- DETAILED ANSWERS ---
-        doc.fontSize(11).font('Helvetica-Bold').text('OBSERVAÇÕES / RESPOSTAS DETALHADAS:');
-        doc.moveDown(0.5);
-        doc.fontSize(10).font('Helvetica').text(data.anamneseText || 'Nenhuma observação adicional.', { align: 'justify', lineGap: 3 });
+        // Linha 3 Saúde
+        y += 25;
+        drawCheckbox('HERPES', data.healthOptions.herpes, 230, y);
+        drawCheckbox('INFECTO CONTAGIOSAS', data.healthOptions.infectoContagiosas, 310, y);
 
-        doc.moveDown(2);
-
-        // --- DECLARATION ---
-        doc.moveDown(1);
-        doc.fontSize(9).font('Helvetica-Bold').text('DECLARAÇÃO DE CIÊNCIA E RESPONSABILIDADE:');
-        doc.moveDown(0.3);
-        doc.fontSize(8).font('Helvetica').text(
-            'Autorizo a realização do procedimento. Recebi todas as recomendações pré e pós procedimento, e estou ciente de minhas condições de saúde física e psicológica. ' +
-            'Não me enquadro na lista de risco descrito pela profissional Dyoli Godim durante a primeira consulta, ficando assim, a profissional isenta de qualquer responsabilidade quanto às reações que por ventura eu venha a apresentar. ' +
-            'ASSUMO TOTAL RESPONSABILIDADE DE PÓS PROCEDIMENTO POIS SEGUIREI AS INSTRUÇÕES RECEBIDAS PELA PROFISSIONAL CORRETAMENTE.',
-            { align: 'justify' }
+        // --- DECLARAÇÃO ---
+        y += 35;
+        doc.fontSize(11).font('Helvetica-Bold').text('DECLARAÇÃO DE CIÊNCIA:', { align: 'center' });
+        y += 15;
+        doc.fontSize(8.5).font('Helvetica').text(
+            'Autorizo a realização do procedimento de TATUAGEM, PIERCING OU MICROPIGMENTAÇÃO. Recebi recomendações pré e pós procedimento, e estou ciente de minhas condições de saúde física e psicológica. Não me enquadro na lista de risco descrito pela profissional Dyoli Godim durante a primeira consulta, ficando assim, a profissional isento de qualquer responsabilidade quanto às reações que por ventura eu venha a apresentar. ASSUMO TOTAL RESPONSABILIDADE DE PÓS PROCEDIMENTO POIS SEGUIREI AS INSTRUÇÕES RECEBIDAS PELA PROFISSIONAL CORRETAMENTE.',
+            40, y, { width: 515, align: 'center', lineGap: 2 }
         );
 
-        doc.moveDown(1.5);
-        
-        // Autorizações específicas
-        const authY = doc.y;
-        drawCheckbox('Renuncio por vontade própria fazer o teste de sensibilidade?', false, 40, authY);
-        doc.fontSize(8).text('SIM   /   NÃO', 310, authY);
-        
-        doc.moveDown(0.5);
-        const photoY = doc.y;
-        drawCheckbox('Autorizo que fotografe o procedimento para fins de portfólio?', true, 40, photoY);
-        doc.fontSize(8).text('SIM   /   NÃO', 310, photoY);
+        y += 55;
+        doc.fontSize(10).font('Helvetica').text('Renuncio por vontade própria de fazer o teste de sensibilidade  SIM', 130, y);
+        drawCheckbox('', false, 450, y);
+        doc.font('Helvetica').text('NÃO', 475, y);
+        drawCheckbox('', true, 510, y);
 
-        doc.moveDown(2);
-        doc.fontSize(9).font('Helvetica-Bold').text(`Eu, ${data.clientName.toUpperCase()}, declaro para devidos fins e efeitos legais que são verdadeiras as informações acima e confirmo o meu desejo de executar o procedimento.`);
+        y += 25;
+        doc.fontSize(9).font('Helvetica').text('Estando ciente que por esse ato assumo qualquer responsabilidade no que diz respeito a reação que minha pele possa vir a sofrer. A PROFISSIONAL NÃO SERÁ RESPONSÁVEL POR POSSÍVEL NEGLIGÊNCIA DE MINHA PARTE.', 40, y, { width: 515, align: 'center' });
 
-        doc.moveDown(4);
+        y += 25;
+        doc.fontSize(10).font('Helvetica').text('Autorizo que fotografe SIM', 40, y);
+        drawCheckbox('', true, 160, y);
+        doc.font('Helvetica').text('NÃO', 185, y);
+        drawCheckbox('', false, 220, y);
+        doc.font('Helvetica').text('o procedimento para efeitos de documentação, congressos e divulgações.', 245, y);
 
-        // --- SIGNATURES ---
-        const sigY = doc.y;
-        doc.moveTo(60, sigY).lineTo(260, sigY).stroke();
-        doc.fontSize(9).text('Assinatura do Cliente', 60, sigY + 5, { width: 200, align: 'center' });
+        y += 30;
+        doc.font('Helvetica').text('Eu __________________________________________________ declaro para devidos fins e efeitos legais que', 40, y);
+        doc.font('Helvetica-Bold').text(data.clientName.toUpperCase(), 65, y - 2);
+        y += 15;
+        doc.font('Helvetica-Bold').text('são verdadeiras as informações acima e confirmo o meu desejo de executar o procedimento.', 40, y);
 
-        doc.moveTo(335, sigY).lineTo(535, sigY).stroke();
-        doc.fontSize(9).text('Assinatura do Profissional', 335, sigY + 5, { width: 200, align: 'center' });
+        y += 25;
+        drawLine(40, y, 555);
+
+        // --- MENORES DE IDADE ---
+        y += 15;
+        doc.fontSize(10).font('Helvetica-Bold').text('MENORES DE IDADE:', 40, y);
+        y += 15;
+        doc.fontSize(8.5).font('Helvetica').text(
+            'Eu ____________________________________________________ responsável legal portador (a) do RG ____________________ e do CPF ___________________________ estou em sã consciência dos riscos e autorizo a profissional Dyoli Godim a executar sobre o corpo de meu filho (a) ________________________________________________ menor de idade, portador do RG ____________________ e do CPF ___________________________ que em minha companhia reside e pelo qual sou inteiramente responsável pelo procedimento. Assumo ainda plena responsabilidade eximindo de qualquer responsabilidade criminal e/ou cível o profissional executor deste procedimento.',
+            40, y, { width: 515, align: 'justify', lineGap: 4 }
+        );
+
+        y += 85;
+        drawLine(40, y, 555);
+        y += 15;
+        doc.fontSize(10).font('Helvetica').text('Declaro para devidos fins e efeitos legais que são verdadeiras as informações acima e confirmo o meu desejo de executar o procedimento.', 40, y, { width: 515 });
+
+        // --- ASSINATURAS ---
+        y += 60;
+        drawLine(80, y, 260);
+        doc.fontSize(9).text('Assinatura do Cliente', 80, y + 5, { width: 180, align: 'center' });
+
+        drawLine(330, y, 510);
+        doc.fontSize(9).text('Assinatura do Responsável', 330, y + 5, { width: 180, align: 'center' });
+
+        doc.end();
+    });
+}
 
         // Footer
         doc.fontSize(7).fillColor('#999').text(`Documento gerado eletronicamente via P-CON BOT em ${new Date().toLocaleString('pt-BR')}`, 40, 780, { align: 'center' });
