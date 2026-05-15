@@ -981,13 +981,18 @@ async function connectToWhatsApp() {
                         total_amount: 0
                     };
 
-                    const { error: dbErr } = await masterSupabase.from('appointments').insert([apptData]);
-                    if (dbErr) {
-                        console.error(`[❌ MASTER DB ERROR ${config.id}] Falha ao salvar agendamento cortesia:`, dbErr.message, dbErr.details);
-                        const { instance_slug: _, ...localApptData } = apptData;
-                        await (sock as any).supabase.from('appointments').insert([localApptData]);
-                    } else {
-                        console.log(`[✅ MASTER DB] Agendamento cortesia salvo com sucesso.`);
+                    console.log(`[💾 MASTER DB] Tentando salvar agendamento cortesia para ${config.id}...`);
+                    try {
+                        const { error: dbErr } = await masterSupabase.from('appointments').insert([apptData]);
+                        if (dbErr) {
+                            console.error(`[❌ MASTER DB ERROR ${config.id}] Falha no insert:`, dbErr.message, dbErr.details);
+                            const { instance_slug: _, ...localApptData } = apptData;
+                            await (sock as any).supabase.from('appointments').insert([localApptData]);
+                        } else {
+                            console.log(`[✅ MASTER DB] Agendamento salvo com sucesso no Master.`);
+                        }
+                    } catch (saveErr: any) {
+                        console.error(`[❌ MASTER DB CRASH] Erro catastrófico ao salvar:`, saveErr.message);
                     }
 
                     const msgSucesso = `✅ *AGENDAMENTO CONFIRMADO!*\n\n${SEPARATOR}\n\n` +
