@@ -983,8 +983,11 @@ async function connectToWhatsApp() {
 
                     const { error: dbErr } = await masterSupabase.from('appointments').insert([apptData]);
                     if (dbErr) {
+                        console.error(`[❌ MASTER DB ERROR ${config.id}] Falha ao salvar agendamento cortesia:`, dbErr.message, dbErr.details);
                         const { instance_slug: _, ...localApptData } = apptData;
                         await (sock as any).supabase.from('appointments').insert([localApptData]);
+                    } else {
+                        console.log(`[✅ MASTER DB] Agendamento cortesia salvo com sucesso.`);
                     }
 
                     const msgSucesso = `✅ *AGENDAMENTO CONFIRMADO!*\n\n${SEPARATOR}\n\n` +
@@ -1141,10 +1144,12 @@ async function connectToWhatsApp() {
 
                 const { error: dbErr } = await masterSupabase.from('appointments').insert([apptData]);
                 if (dbErr) {
-                    console.warn(`[⚠️ ${config.id}] Falha ao salvar na master (${dbErr.message}). Salvando no local...`);
+                    console.error(`[❌ MASTER DB ERROR ${config.id}] Falha ao salvar agendamento PIX pendente:`, dbErr.message, dbErr.details);
                     // Fallback se não tiver master (pra instâncias não migradas)
                     const { instance_slug: _, ...localApptData } = apptData;
                     await (sock as any).supabase.from('appointments').insert([localApptData]);
+                } else {
+                    console.log(`[✅ MASTER DB] Agendamento PIX pendente salvo com sucesso.`);
                 }
 
                 await setState({ ...rawState, state: 'AWAITING_PAYMENT', payment_id: resposta.id, external_reference, valorPagamento: valorCobrado });
