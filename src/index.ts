@@ -883,7 +883,7 @@ async function connectToWhatsApp() {
             if (category.includes('piercing') || category.includes('micro') || normalizedNome.includes('piercing') || normalizedNome.includes('micro')) {
                 
                 // Aviso específico para Micropigmentação Labial
-                if (lowerNome.includes('labial')) {
+                if (normalizedNome.includes('labial')) {
                     await sendMsg(
                         `⚠️ *AVISO IMPORTANTE (Micropigmentação Labial)*\n\n` +
                         `Para garantir o melhor resultado e sua segurança, é obrigatório o uso de *Aciclovir (8/8h)* iniciando 3 dias antes do procedimento.\n\n` +
