@@ -1,4 +1,4 @@
-import PDFDocument from 'pdfkit';
+const PDFDocument = require('pdfkit');
 import { createClient } from '@supabase/supabase-js';
 
 export async function generateAnamnesisPDF(data: {
