@@ -205,10 +205,6 @@ export async function generateAnamnesisPDF(data: {
         drawLine(330, y, 510);
         doc.fontSize(9).text('Assinatura do Responsável', 330, y + 5, { width: 180, align: 'center' });
 
-        doc.end();
-    });
-}
-
         // Footer
         doc.fontSize(7).fillColor('#999').text(`Documento gerado eletronicamente via P-CON BOT em ${new Date().toLocaleString('pt-BR')}`, 40, 780, { align: 'center' });
 
