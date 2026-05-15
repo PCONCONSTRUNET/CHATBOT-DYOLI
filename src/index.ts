@@ -871,13 +871,16 @@ async function connectToWhatsApp() {
                 ? horarioSelecionado
                 : (horarioSelecionado.horario || horarioSelecionado.hora || String(horarioSelecionado));
 
-            const servico = rawState.servico;
             const nomeServico = servico.nome || servico.name || 'Procedimento';
-            const category = (servico.category || servico.categoria || '').toLowerCase();
-            const lowerNome = nomeServico.toLowerCase();
+            
+            // Normalização para busca (remove acentos e deixa minúsculo)
+            const normalizedNome = nomeServico.normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
+            const category = (servico.category || servico.categoria || '').normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-            // --- NOVO: Gatilho de Anamnese para Piercing e Micro ---
-            if (category.includes('piercing') || category.includes('micro') || lowerNome.includes('piercing') || lowerNome.includes('micro')) {
+            console.log(`[🔎 ${config.id}] Verificando anamnese para: "${nomeServico}" (Normalizado: "${normalizedNome}")`);
+
+            // --- NOVO: Gatilho de Anamnese para Piercing e Micro (Busca Robusta) ---
+            if (category.includes('piercing') || category.includes('micro') || normalizedNome.includes('piercing') || normalizedNome.includes('micro')) {
                 
                 // Aviso específico para Micropigmentação Labial
                 if (lowerNome.includes('labial')) {
@@ -978,7 +981,8 @@ async function connectToWhatsApp() {
                         status: 'confirmado',
                         payment_method: 'cortesia',
                         amount: 0,
-                        total_amount: 0
+                        total_amount: 0,
+                        anamnese: rawState.anamnese // Adiciona a anamnese ao agendamento
                     };
 
                     console.log(`[💾 EDGE FUNCTION] Enviando agendamento cortesia para bot-agendar...`);
@@ -997,6 +1001,12 @@ async function connectToWhatsApp() {
                         await (sock as any).supabase.from('appointments').insert([localApptData]);
                     }
 
+                    // --- NOVO: Gera a anamnese para Cortesia ---
+                    if (rawState.anamnese) {
+                        console.log(`[📄 PDF] Gerando anamnese para cortesia...`);
+                        saveAnamnesisRecord(rawState, nome, userPhone, cpf).catch(err => console.error('Erro ao gerar PDF de anamnese:', err));
+                    }
+
                     const msgSucesso = `✅ *AGENDAMENTO CONFIRMADO!*\n\n${SEPARATOR}\n\n` +
                         `Tudo certo, *${nome}*!\nSeu horário está reservado (Cortesía):\n\n` +
                         `✂️ *Serviço:* ${servico.nome || servico.name}\n📅 *Data:* ${dataBR}\n🕐 *Horário:* ${hora}\n\n` +
@@ -1011,7 +1021,7 @@ async function connectToWhatsApp() {
                 return;
             }
 
-            // Se houver anamnese preenchida, gera o PDF agora que temos Nome e CPF
+            // Se houver anamnese preenchida (para serviços PAGO), gera o PDF agora que temos Nome e CPF
             if (rawState.anamnese) {
                 saveAnamnesisRecord(rawState, nome, userPhone, cpf).catch(err => console.error('Erro ao gerar PDF de anamnese:', err));
             }
