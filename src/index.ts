@@ -1434,14 +1434,15 @@ async function connectToWhatsApp() {
  * Helper para gerar PDF e enviar registro de anamnese via Edge Function
  */
 async function saveAnamnesisRecord(rawState: any, customerName: string, customerPhone: string, cpf: string = 'Não informado') {
-    if (!rawState.anamnese) return null;
+    const anamneseText = rawState.anamnese;
+    if (!anamneseText) {
+        console.warn(`[⚠️ ${config.id}] saveAnamnesisRecord chamado, mas rawState.anamnese está VAZIO.`);
+        return null;
+    }
     
     try {
-        const { generateAnamnesisPDF } = await import('./pdf-service.js');
-        const serviceName = rawState.servico?.nome || rawState.servico?.name || 'Tatuagem';
-        const anamneseText = rawState.anamnese;
-        
-        console.log(`[📄 ${config.id}] Gerando PDF profissional e enviando para Edge Function...`);
+        const serviceName = rawState.servico?.nome || rawState.servico?.name || 'Procedimento';
+        console.log(`[📄 ${config.id}] Iniciando geração de PDF para ${customerName} (${serviceName})...`);
 
         // Normalização e Parsing inteligente das opções de saúde
         const t = anamneseText.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, "");
