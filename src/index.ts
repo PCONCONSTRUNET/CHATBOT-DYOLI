@@ -708,31 +708,6 @@ async function connectToWhatsApp() {
                 return;
             }
 
-            // Fluxo Especial para Dyoli (Tattoo, Piercing, Micropigmentação) - Anamnese
-            const categoryName = (servico.categoria || servico.category || '').toLowerCase();
-            const serviceName = (servico.nome || servico.name || '').toLowerCase();
-            
-            const isTattoo = categoryName.includes('tatuag') || serviceName.includes('tatuag');
-            const isPiercing = categoryName.includes('piercing') || serviceName.includes('piercing');
-            const isMicro = categoryName.includes('micropig') || serviceName.includes('micropig');
-
-            if (config.id === 'dyoli' && (isTattoo || isPiercing || isMicro)) {
-                let anamneseMsg = `✨ *${(servico.nome || servico.name).toUpperCase()}*\n\n` +
-                    `Excelente escolha! 💖 Para sua segurança, precisamos preencher uma rápida *ficha de anamnese*:\n\n` +
-                    `📝 *SAÚDE E SEGURANÇA:*\n` +
-                    `Você possui alergia ou alguma dessas condições: Gravidez, Diabetes, Problemas Cardíacos, Circulatórios ou Respiratórios, Asma, Câncer, Herpes ou Doenças Infectocontagiosas? Faz uso de medicação contínua?\n\n`;
-
-                if (serviceName.includes('labial')) {
-                    anamneseMsg += `⚠️ *AVISO:* Para Micropigmentação Labial, é necessário o uso de *Aciclovir (8/8h por 3 dias antes)*. Você confirma que fará o uso?\n\n`;
-                }
-
-                anamneseMsg += `👉 *Descreva sua situação abaixo* ou digite *"Não"* caso não possua nada.`;
-
-                await sendMsg(anamneseMsg);
-                await setState({ state: 'TATTOO_ANAMNESE', servico });
-                return;
-            }
-
             const nome = servico.nome || servico.name || 'Procedimento';
             const valor = servico.preco || servico.price || 0;
             const preco = parseFloat(valor).toFixed(2).replace('.', ',');
@@ -1479,20 +1454,21 @@ async function saveAnamnesisRecord(rawState: any, customerName: string, customer
             observacao: `Bot - ${config.name || config.id}`
         };
 
-        const endpoint = `${process.env.SUPABASE_FUNCTIONS_URL}/bot-anamnese`;
+        const endpoint = `https://vlepenxinekoljxecomr.supabase.co/functions/v1/bot-anamnese`;
         
         const response = await axios.post(endpoint, body, {
             headers: {
                 'Content-Type': 'application/json',
-                'x-bot-secret': config.botApiSecret
+                'x-bot-secret': config.botApiSecret || 'pcon-secret-key'
             }
         });
 
-        console.log(`[✅ ${config.id}] Anamnese enviada com sucesso para Edge Function!`);
+        console.log(`[✅ ${config.id}] Anamnese enviada com sucesso! Status: ${response.status}`);
         return true;
     } catch (err: any) {
         const errorDetail = err.response?.data || err.message;
-        console.error(`[❌ ${config.id}] Erro ao enviar anamnese para Edge Function:`, errorDetail);
+        const statusCode = err.response?.status;
+        console.error(`[❌ ${config.id}] Erro ao enviar anamnese (Status ${statusCode}):`, JSON.stringify(errorDetail));
         return null;
     }
 }
