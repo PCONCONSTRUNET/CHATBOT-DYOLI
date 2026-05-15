@@ -981,18 +981,20 @@ async function connectToWhatsApp() {
                         total_amount: 0
                     };
 
-                    console.log(`[💾 MASTER DB] Tentando salvar agendamento cortesia para ${config.id}...`);
+                    console.log(`[💾 EDGE FUNCTION] Enviando agendamento cortesia para bot-agendar...`);
                     try {
-                        const { error: dbErr } = await masterSupabase.from('appointments').insert([apptData]);
-                        if (dbErr) {
-                            console.error(`[❌ MASTER DB ERROR ${config.id}] Falha no insert:`, dbErr.message, dbErr.details);
-                            const { instance_slug: _, ...localApptData } = apptData;
-                            await (sock as any).supabase.from('appointments').insert([localApptData]);
-                        } else {
-                            console.log(`[✅ MASTER DB] Agendamento salvo com sucesso no Master.`);
-                        }
-                    } catch (saveErr: any) {
-                        console.error(`[❌ MASTER DB CRASH] Erro catastrófico ao salvar:`, saveErr.message);
+                        const response = await axios.post('https://vlepenxinekoljxecomr.supabase.co/functions/v1/bot-agendar', apptData, {
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'x-bot-secret': config.botApiSecret || 'pcon-secret-key'
+                            }
+                        });
+                        console.log(`[✅ EDGE FUNCTION] Agendamento salvo com sucesso. Status: ${response.status}`);
+                    } catch (err: any) {
+                        console.error(`[❌ EDGE FUNCTION ERROR] Falha ao agendar:`, err.response?.data || err.message);
+                        // Fallback local
+                        const { instance_slug: _, ...localApptData } = apptData;
+                        await (sock as any).supabase.from('appointments').insert([localApptData]);
                     }
 
                     const msgSucesso = `✅ *AGENDAMENTO CONFIRMADO!*\n\n${SEPARATOR}\n\n` +
@@ -1147,14 +1149,20 @@ async function connectToWhatsApp() {
                     external_reference: external_reference
                 };
 
-                const { error: dbErr } = await masterSupabase.from('appointments').insert([apptData]);
-                if (dbErr) {
-                    console.error(`[❌ MASTER DB ERROR ${config.id}] Falha ao salvar agendamento PIX pendente:`, dbErr.message, dbErr.details);
-                    // Fallback se não tiver master (pra instâncias não migradas)
+                console.log(`[💾 EDGE FUNCTION] Enviando agendamento PIX pendente para bot-agendar...`);
+                try {
+                    const response = await axios.post('https://vlepenxinekoljxecomr.supabase.co/functions/v1/bot-agendar', apptData, {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-bot-secret': config.botApiSecret || 'pcon-secret-key'
+                        }
+                    });
+                    console.log(`[✅ EDGE FUNCTION] Agendamento PIX pendente salvo. Status: ${response.status}`);
+                } catch (err: any) {
+                    console.error(`[❌ EDGE FUNCTION ERROR] Falha ao salvar PIX pendente:`, err.response?.data || err.message);
+                    // Fallback local
                     const { instance_slug: _, ...localApptData } = apptData;
                     await (sock as any).supabase.from('appointments').insert([localApptData]);
-                } else {
-                    console.log(`[✅ MASTER DB] Agendamento PIX pendente salvo com sucesso.`);
                 }
 
                 await setState({ ...rawState, state: 'AWAITING_PAYMENT', payment_id: resposta.id, external_reference, valorPagamento: valorCobrado });
