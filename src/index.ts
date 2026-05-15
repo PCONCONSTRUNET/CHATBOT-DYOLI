@@ -871,6 +871,7 @@ async function connectToWhatsApp() {
                 ? horarioSelecionado
                 : (horarioSelecionado.horario || horarioSelecionado.hora || String(horarioSelecionado));
 
+            const servico = rawState.servico;
             const nomeServico = servico.nome || servico.name || 'Procedimento';
             
             // Normalização para busca (remove acentos e deixa minúsculo)
