@@ -1347,7 +1347,6 @@ async function connectToWhatsApp() {
                 );
                 await setState({ ...rawState, state: 'SELECT_DATE', anamnese: incomingText });
             }
-            }
             return;
         }
 
