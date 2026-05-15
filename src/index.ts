@@ -988,18 +988,30 @@ async function connectToWhatsApp() {
 
                     console.log(`[💾 EDGE FUNCTION] Enviando agendamento cortesia para bot-agendar...`);
                     try {
-                        const response = await axios.post('https://vlepenxinekoljxecomr.supabase.co/functions/v1/bot-agendar', apptData, {
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'x-bot-secret': config.botApiSecret || 'pcon-secret-key'
-                            }
-                        });
-                        console.log(`[✅ EDGE FUNCTION] Agendamento salvo com sucesso. Status: ${response.status}`);
+                        const response = await lovable.agendar({
+                            whatsapp: userPhone,
+                            nome: nome,
+                            servico_id: servico.id,
+                            data: dataISO,
+                            horario: hora,
+                            forma_pagamento: 'cortesia',
+                            anamnese: rawState.anamnese // Passa a anamnese junto
+                        } as any);
+                        console.log(`[✅ EDGE FUNCTION] Agendamento salvo com sucesso.`);
                     } catch (err: any) {
-                        console.error(`[❌ EDGE FUNCTION ERROR] Falha ao agendar:`, err.response?.data || err.message);
-                        // Fallback local
-                        const { instance_slug: _, ...localApptData } = apptData;
-                        await (sock as any).supabase.from('appointments').insert([localApptData]);
+                        console.error(`[❌ EDGE FUNCTION ERROR] Falha ao agendar:`, err.message);
+                        // Fallback local direto no banco se a função falhar
+                        const apptData = {
+                            customer_whatsapp: userPhone,
+                            customer_name: nome,
+                            service_id: servico.id,
+                            date: dataISO,
+                            time: hora,
+                            status: 'confirmado',
+                            payment_method: 'cortesia',
+                            anamnese: rawState.anamnese
+                        };
+                        await (sock as any).supabase.from('appointments').insert([apptData]);
                     }
 
                     // --- NOVO: Gera a anamnese para Cortesia ---
@@ -1162,18 +1174,32 @@ async function connectToWhatsApp() {
 
                 console.log(`[💾 EDGE FUNCTION] Enviando agendamento PIX pendente para bot-agendar...`);
                 try {
-                    const response = await axios.post('https://vlepenxinekoljxecomr.supabase.co/functions/v1/bot-agendar', apptData, {
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'x-bot-secret': config.botApiSecret || 'pcon-secret-key'
-                        }
-                    });
-                    console.log(`[✅ EDGE FUNCTION] Agendamento PIX pendente salvo. Status: ${response.status}`);
+                    const response = await lovable.agendar({
+                        whatsapp: userPhone,
+                        nome: nome,
+                        servico_id: servico.id,
+                        data: dataISO,
+                        horario: hora,
+                        forma_pagamento: 'pix',
+                        anamnese: rawState.anamnese
+                    } as any);
+                    console.log(`[✅ EDGE FUNCTION] Agendamento PIX pendente salvo.`);
                 } catch (err: any) {
-                    console.error(`[❌ EDGE FUNCTION ERROR] Falha ao salvar PIX pendente:`, err.response?.data || err.message);
+                    console.error(`[❌ EDGE FUNCTION ERROR] Falha ao salvar PIX pendente:`, err.message);
                     // Fallback local
-                    const { instance_slug: _, ...localApptData } = apptData;
-                    await (sock as any).supabase.from('appointments').insert([localApptData]);
+                    const apptData = {
+                        customer_whatsapp: userPhone,
+                        customer_name: nome,
+                        service_id: servico.id,
+                        date: dataISO,
+                        time: hora,
+                        status: 'pendente',
+                        payment_method: 'pix',
+                        amount: 0,
+                        total_amount: valorCobrado,
+                        anamnese: rawState.anamnese
+                    };
+                    await (sock as any).supabase.from('appointments').insert([apptData]);
                 }
 
                 await setState({ ...rawState, state: 'AWAITING_PAYMENT', payment_id: resposta.id, external_reference, valorPagamento: valorCobrado });
