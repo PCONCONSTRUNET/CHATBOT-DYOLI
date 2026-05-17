@@ -203,6 +203,7 @@ app.post('/webhook/mercadopago', async (req: any, res: any) => {
 });
 
 const processedMessages = new Set<string>();
+const typingContacts = new Set<string>();
 
 async function getPersistentState(remoteJid: string) {
     const { data, error } = await masterSupabase
@@ -251,6 +252,7 @@ async function connectToWhatsApp() {
     // Função auxiliar para enviar mensagem com "falso digitando" mais rápido
     const sendWithTyping = async (jid: string, content: any, options: any = {}) => {
         try {
+            typingContacts.add(jid);
             await sock.presenceSubscribe(jid);
             await sock.sendPresenceUpdate('available', jid);
             await delay(100);
@@ -269,6 +271,8 @@ async function connectToWhatsApp() {
             if (sock?.sendMessage) {
                 return await sock.sendMessage(jid, content, options);
             }
+        } finally {
+            typingContacts.delete(jid);
         }
     };
 
@@ -358,7 +362,6 @@ async function connectToWhatsApp() {
         if (!remoteJid) return;
 
         let incomingText = (msg.message.conversation || msg.message.extendedTextMessage?.text || '').trim();
-        console.log(`[📥 MENSAGEM] De ${remoteJid}: "${incomingText}"`);
 
         // ── COMANDO DA ATENDENTE (atendimento finalizado) ──
         // Se a mensagem partiu de você (dona) e for o comando, reseta o estado do cliente
@@ -372,6 +375,14 @@ async function connectToWhatsApp() {
             return; // Não processa mensagens próprias como mensagens de cliente
         }
 
+        // Bloqueia se o bot estiver atualmente digitando para este jid (evita responder enquanto o bot digita)
+        if (typingContacts.has(remoteJid)) {
+            console.log(`[🚫 ${config.id}] Mensagem de ${remoteJid} ignorada porque o bot está digitando.`);
+            return;
+        }
+
+        console.log(`[📥 MENSAGEM] De ${remoteJid}: "${incomingText}"`);
+
         let userPhone = '';
         if (remoteJid.endsWith('@lid')) {
             const senderPn = (msg.key as any).senderPn?.split('@')[0];
@@ -380,9 +391,9 @@ async function connectToWhatsApp() {
             const resolvedJid = resolvedWa?.[0]?.jid?.split('@')[0];
             const participant = msg.key.participant || msg.message?.extendedTextMessage?.contextInfo?.participant;
             
-            userPhone = remoteJidAlt || senderPn || resolvedJid || participant?.split('@')[0] || remoteJid.split('@')[0];
+            userPhone = remoteJidAlt || senderPn || resolvedJid || participant?.split('@')[0] || remoteJid.split('@')[0] || '';
         } else {
-            userPhone = remoteJid.split('@')[0];
+            userPhone = remoteJid.split('@')[0] || '';
         }
         userPhone = userPhone.replace(/\D/g, '');
 
@@ -453,7 +464,7 @@ async function connectToWhatsApp() {
         if (currentState === 'MENU') {
             // Verifica se há um menu dinâmico configurado
             const menuItems = config.menu || [];
-            const dynamicItem = menuItems.find(item => item.key === incomingText);
+            const dynamicItem = menuItems.find((item: any) => item.key === incomingText);
 
             if (dynamicItem) {
                 switch (dynamicItem.action) {
@@ -1391,7 +1402,7 @@ async function connectToWhatsApp() {
             }
 
             // Simple FAQ keyword matching
-            let bestMatch = null;
+            let bestMatch: any = null;
             let highestScore = 0;
             const faqs = config.faq || [];
             
@@ -1519,10 +1530,33 @@ async function saveAnamnesisRecord(rawState: any, customerName: string, customer
     }
 }
 
-app.get('/api/status', async (req, res) => {
+app.all('/api/status', async (req: any, res: any) => {
     const isConnected = !!globalSock?.user;
     let qrBase64 = '';
-    if (latestQR && !isConnected) {
+    let pairingCode = '';
+    
+    const phoneParam = req.query.phone || req.query.phoneNumber || req.query.number || req.body?.phone || req.body?.phoneNumber || req.body?.number;
+
+    if (phoneParam && !isConnected && globalSock) {
+        try {
+            let phone = String(phoneParam).replace(/\D/g, '');
+            if (phone.length === 10 || phone.length === 11) {
+                phone = '55' + phone;
+            }
+            console.log(`[📱 ${config.id}] Solicitando código de pareamento para o número: ${phone}`);
+            
+            if (globalSock.authState?.creds?.registered) {
+                console.log(`[⚠️ ${config.id}] Socket já registrado no Baileys. Ignorando solicitação de código.`);
+            } else {
+                pairingCode = await globalSock.requestPairingCode(phone);
+                console.log(`[🔑 ${config.id}] Código de pareamento gerado com sucesso: ${pairingCode}`);
+            }
+        } catch (err: any) {
+            console.error(`[❌ ${config.id}] Erro ao gerar código de pareamento:`, err?.message || err);
+        }
+    }
+
+    if (latestQR && !isConnected && !pairingCode) {
         try { 
             qrBase64 = await QRCode.toDataURL(latestQR, { 
                 scale: 12, 
@@ -1534,14 +1568,85 @@ app.get('/api/status', async (req, res) => {
             }); 
         } catch (err) {}
     }
+
     res.json({ 
-        status: isConnected ? 'CONNECTED' : (latestQR ? 'QR_READY' : 'CONNECTING'), 
+        status: isConnected ? 'CONNECTED' : (pairingCode ? 'CONNECTING' : (latestQR ? 'QR_READY' : 'CONNECTING')), 
         qr: latestQR,
-        code: latestQR,
+        code: pairingCode || latestQR,
+        pairingCode: pairingCode,
+        pairing_code: pairingCode,
         qrcode: qrBase64,
         qrCode: qrBase64,
         qr_code: qrBase64,
         image: qrBase64,
+        pairingCodeEnabled: true
+    });
+});
+
+app.all('/api/pairing-code', async (req: any, res: any) => {
+    const isConnected = !!globalSock?.user;
+    let pairingCode = '';
+    const phoneParam = req.query.phone || req.query.phoneNumber || req.query.number || req.body?.phone || req.body?.phoneNumber || req.body?.number;
+
+    if (phoneParam && !isConnected && globalSock) {
+        try {
+            let phone = String(phoneParam).replace(/\D/g, '');
+            if (phone.length === 10 || phone.length === 11) {
+                phone = '55' + phone;
+            }
+            console.log(`[📱 ${config.id}] Solicitando código de pareamento via endpoint dedicado para: ${phone}`);
+            if (globalSock.authState?.creds?.registered) {
+                console.log(`[⚠️ ${config.id}] Socket já registrado no Baileys.`);
+            } else {
+                pairingCode = await globalSock.requestPairingCode(phone);
+                console.log(`[🔑 ${config.id}] Código de pareamento gerado via endpoint dedicado: ${pairingCode}`);
+            }
+        } catch (err: any) {
+            console.error(`[❌ ${config.id}] Erro no endpoint dedicado ao gerar código de pareamento:`, err?.message || err);
+        }
+    }
+
+    res.json({
+        success: !!pairingCode,
+        sucesso: !!pairingCode,
+        status: isConnected ? 'CONNECTED' : (pairingCode ? 'CONNECTING' : 'DISCONNECTED'),
+        code: pairingCode,
+        pairingCode: pairingCode,
+        pairing_code: pairingCode,
+        pairingCodeEnabled: true
+    });
+});
+
+app.all('/api/pair', async (req: any, res: any) => {
+    const isConnected = !!globalSock?.user;
+    let pairingCode = '';
+    const phoneParam = req.query.phone || req.query.phoneNumber || req.query.number || req.body?.phone || req.body?.phoneNumber || req.body?.number;
+
+    if (phoneParam && !isConnected && globalSock) {
+        try {
+            let phone = String(phoneParam).replace(/\D/g, '');
+            if (phone.length === 10 || phone.length === 11) {
+                phone = '55' + phone;
+            }
+            console.log(`[📱 ${config.id}] Solicitando código de pareamento via endpoint alternativo para: ${phone}`);
+            if (globalSock.authState?.creds?.registered) {
+                console.log(`[⚠️ ${config.id}] Socket já registrado no Baileys.`);
+            } else {
+                pairingCode = await globalSock.requestPairingCode(phone);
+                console.log(`[🔑 ${config.id}] Código de pareamento gerado via endpoint alternativo: ${pairingCode}`);
+            }
+        } catch (err: any) {
+            console.error(`[❌ ${config.id}] Erro no endpoint alternativo ao gerar código de pareamento:`, err?.message || err);
+        }
+    }
+
+    res.json({
+        success: !!pairingCode,
+        sucesso: !!pairingCode,
+        status: isConnected ? 'CONNECTED' : (pairingCode ? 'CONNECTING' : 'DISCONNECTED'),
+        code: pairingCode,
+        pairingCode: pairingCode,
+        pairing_code: pairingCode,
         pairingCodeEnabled: true
     });
 });

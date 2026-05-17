@@ -54,6 +54,7 @@ export interface InstanceConfig {
         question: string;
         answer: string;
     }[];
+    menu?: any[];
 }
 
 /**
@@ -171,6 +172,7 @@ export async function loadAllInstancesFromDb(): Promise<InstanceConfig[]> {
         mercadopagoAccessToken: inst.mercadopago_access_token,
         messages: inst.messages,
         faq: inst.faq,
+        menu: inst.menu || [],
         reminder24h: inst.reminder24h,
         reminder1h: inst.reminder1h,
         sessionFolder: inst.session_folder || `sessions/${inst.slug}`

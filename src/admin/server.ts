@@ -58,12 +58,12 @@ app.get('/api/instances', authenticate, async (req, res) => {
         const { data: dbInstances, error } = await supabase.from('instances').select('*');
         if (error) throw error;
 
-        pm2.connect((err) => {
+        pm2.connect((err: any) => {
             if (err) return res.status(500).json({ error: 'Erro ao conectar ao PM2' });
 
-            pm2.list(async (err, list) => {
-                const instancesWithStatus = await Promise.all(dbInstances.map(async (inst) => {
-                    const pmProcess = list.find(p => p.name === `bot-${inst.slug}`);
+            pm2.list(async (err: any, list: any) => {
+                const instancesWithStatus = await Promise.all(dbInstances.map(async (inst: any) => {
+                    const pmProcess = list.find((p: any) => p.name === `bot-${inst.slug}`);
                     
                     let whatsappStatus = 'desconectado';
                     if (pmProcess && pmProcess.pm2_env?.status === 'online') {
@@ -103,7 +103,7 @@ app.get('/api/instances', authenticate, async (req, res) => {
 app.post('/api/control', authenticate, (req, res) => {
     const { slug, action } = req.body;
 
-    pm2.connect((err) => {
+    pm2.connect((err: any) => {
         if (err) return res.status(500).json({ error: 'Erro ao conectar ao PM2' });
 
         const processName = `bot-${slug}`;
@@ -134,13 +134,13 @@ app.post('/api/control', authenticate, (req, res) => {
 app.get('/api/logs', authenticate, (req, res) => {
     const processName = req.query.name as string || 'pcon-admin';
 
-    pm2.connect((err) => {
+    pm2.connect((err: any) => {
         if (err) return res.status(500).json({ error: 'Erro PM2' });
         
-        pm2.list((err, list) => {
+        pm2.list((err: any, list: any) => {
             if (err) return res.status(500).json({ error: 'Erro ao listar' });
             
-            const proc = list.find(p => p.name === processName);
+            const proc = list.find((p: any) => p.name === processName);
             const logPath = proc?.pm2_env?.pm_out_log_path;
             const errPath = proc?.pm2_env?.pm_err_log_path;
 

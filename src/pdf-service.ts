@@ -21,7 +21,7 @@ export async function generateAnamnesisPDF(data: {
             });
             const chunks: any[] = [];
 
-            doc.on('data', chunk => chunks.push(chunk));
+            doc.on('data', (chunk: any) => chunks.push(chunk));
             doc.on('end', () => {
                 console.log('[📄 PDF] Documento finalizado com sucesso.');
                 resolve(Buffer.concat(chunks));
