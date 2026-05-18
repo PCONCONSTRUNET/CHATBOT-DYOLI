@@ -15,7 +15,7 @@ import { createPaymentClients } from './payments-factory.js';
 import { loadInstanceConfig, loadConfigFromDb } from './config.js';
 import type { InstanceConfig } from './config.js';
 import { startReminders } from './reminders.js';
-import { SEPARATOR, formatMsg } from './utils.js';
+import { SEPARATOR, formatMsg, formatJid, resolveJid } from './utils.js';
 import { generateAnamnesisPDF, uploadAnamnesis } from './pdf-service.js';
 
 // Pega o argumento (caminho JSON ou slug do banco)
@@ -92,9 +92,9 @@ app.post('/webhook/notificacao', authMiddleware, async (req: any, res: any) => {
         }
 
         if (globalSock) {
-            let tel = numero.replace(/\D/g, '');
-            if (tel.length === 10 || tel.length === 11) tel = '55' + tel;
-            const jid = tel.includes('@') ? tel : `${tel}@s.whatsapp.net`;
+            // Resolve o JID dinamicamente ou com fallback inteligente para DDI/DDD brasileiro
+            const jid = await resolveJid(globalSock, numero);
+            console.log(`[📨 ${config.id}] Enviando webhook para JID resolvido: ${jid}`);
             
             if (globalSock.sendWithTyping) {
                 await globalSock.sendWithTyping(jid, { text: mensagem });
@@ -106,6 +106,7 @@ app.post('/webhook/notificacao', authMiddleware, async (req: any, res: any) => {
             res.status(503).json({ erro: 'Bot desconectado' });
         }
     } catch (err: any) {
+        console.error(`[📨 ${config.id}] Erro no webhook/notificacao:`, err.message || err);
         res.status(500).json({ erro: err.message });
     }
 });
@@ -147,11 +148,8 @@ app.post('/webhook/mercadopago', async (req: any, res: any) => {
                         .eq('id', appt.id);
 
                     // Enviar msg de sucesso
-                    const whatsapp = appt.customer_whatsapp;
-                    // Formatar número
-                    let tel = whatsapp.replace(/\D/g, '');
-                    if (tel.length === 10 || tel.length === 11) tel = '55' + tel;
-                    const jid = tel.includes('@') ? tel : `${tel}@s.whatsapp.net`;
+                    const jid = await resolveJid(globalSock, appt.customer_whatsapp);
+
 
                     const dataBR = appt.date.split('-').reverse().join('/');
                     const msgSucesso = `✅ *PAGAMENTO APROVADO E AGENDAMENTO CONFIRMADO!*\n\n${SEPARATOR}\n\n` +
@@ -177,10 +175,8 @@ app.post('/webhook/mercadopago', async (req: any, res: any) => {
 
                     if (localAppt && localAppt.status === 'pendente') {
                         await supabase.from('appointments').update({ status: 'confirmado' }).eq('id', localAppt.id);
-                        const whatsapp = localAppt.customer_whatsapp;
-                        let tel = whatsapp.replace(/\D/g, '');
-                        if (tel.length === 10 || tel.length === 11) tel = '55' + tel;
-                        const jid = tel.includes('@') ? tel : `${tel}@s.whatsapp.net`;
+                        const jid = await resolveJid(globalSock, localAppt.customer_whatsapp);
+
 
                         const dataBR = localAppt.date.split('-').reverse().join('/');
                         const msgSucesso = `✅ *PAGAMENTO APROVADO E AGENDAMENTO CONFIRMADO!*\n\n${SEPARATOR}\n\n` +

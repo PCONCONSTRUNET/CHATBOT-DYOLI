@@ -1,5 +1,5 @@
 import type { InstanceConfig } from './config.js';
-import { SEPARATOR, formatMsg } from './utils.js';
+import { SEPARATOR, formatMsg, resolveJid } from './utils.js';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 
@@ -168,10 +168,11 @@ export function startReminders(
 
     const sendWhatsApp = async (jid: string, text: string) => {
         if (sock?.user) {
+            const resolvedJid = await resolveJid(sock, jid);
             if ((sock as any).sendWithTyping) {
-                await (sock as any).sendWithTyping(jid, { text: text });
+                await (sock as any).sendWithTyping(resolvedJid, { text: text });
             } else {
-                await sock.sendMessage(jid, { text: text });
+                await sock.sendMessage(resolvedJid, { text: text });
             }
         } else {
             throw new Error('WhatsApp não conectado');
