@@ -667,7 +667,7 @@ async function connectToWhatsApp() {
                     `Você possui alergia ou alguma dessas condições: Gravidez, Diabetes, Problemas Cardíacos, Circulatórios ou Respiratórios, Asma, Câncer, Herpes ou Doenças Infectocontagiosas? Faz uso de medicação contínua?\n\n` +
                     `👉 *Descreva sua situação abaixo* ou digite *"Não"* caso não possua nada.`
                 );
-                await setState({ state: 'TATTOO_ANAMNESE' });
+                await setState({ state: 'TATTOO_ANAMNESE', isTattooFlow: true });
                 return;
             }
 
@@ -1325,20 +1325,37 @@ async function connectToWhatsApp() {
             const serviceName = (servico?.nome || servico?.name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, "").toLowerCase();
             
             // Verifica se é Tatuagem
-            const isTattoo = categoryName.includes('tatuag') || serviceName.includes('tatuag') || categoryName.includes('tattoo') || serviceName.includes('tattoo');
+            const isTattoo = rawState.isTattooFlow || categoryName.includes('tatuag') || serviceName.includes('tatuag') || categoryName.includes('tattoo') || serviceName.includes('tattoo');
 
             if (isTattoo) {
-                // Fluxo Tatuagem: Vai para Detalhes (sem data)
-                await setState({ ...rawState, state: 'TATTOO_DETAILS', anamnese });
+                // Fluxo Tatuagem: Envia o pedido de detalhes e encerra o bot imediatamente
+                const pushName = msg.pushName || 'Cliente WhatsApp';
+                const customerPhone = userPhone;
+
                 await sendMsg(
                     `${msgAgradecimento}\n\n` +
-                    `Agora, por favor, me descreva o que você deseja tatuar:\n\n` +
-                    `1. *Ideia/Desenho*\n` +
-                    `2. *Local do corpo*\n` +
-                    `3. *Tamanho aproximado (em cm)*\n\n` +
-                    `📸 Se tiver fotos de referência, pode enviar agora!\n\n` +
-                    `_Pode descrever tudo em uma única mensagem._`
+                    `🎨 *CRIAÇÃO E ORÇAMENTO DE TATUAGEM*\n\n` +
+                    `Para darmos início à sua criação, por favor me descreva o que você deseja tatuar:\n\n` +
+                    `1. *Ideia / Desenho* (se tiver referências, envie!)\n` +
+                    `2. *Local do corpo* que deseja tatuar\n` +
+                    `3. *Tamanho aproximado* em centímetros (cm)\n\n` +
+                    `📸 Envie também todas as fotos de referência que você tiver!\n\n` +
+                    `━━━━━━━━━━━━━━━━━━━━\n` +
+                    `👉 *Por favor, descreva seus detalhes e envie suas imagens na sequência.*\n\n` +
+                    `O nosso assistente automático foi pausado agora. A atendente *Dyoli* já foi notificada e dará continuidade ao seu atendimento por aqui! 💬🎨`
                 );
+
+                // Salva a anamnese no Supabase usando o fallback para o serviço "Criação de Tatuagem"
+                const rawStateWithAnamnese = { 
+                    ...rawState, 
+                    anamnese, 
+                    servico: rawState.servico || { nome: 'Criação de Tatuagem' } 
+                };
+                saveAnamnesisRecord(rawStateWithAnamnese, pushName, customerPhone, 'Não informado')
+                    .catch(err => console.error('Erro ao gerar PDF de anamnese:', err));
+
+                // Coloca imediatamente em atendimento humano (o bot não responde mais)
+                await setState({ state: 'WAITING_HUMAN' });
             } else {
                 // Fluxo Piercing/Micro: Vai para Escolha de Data
                 const nome = servico?.nome || servico?.name || 'Procedimento';
@@ -1358,33 +1375,6 @@ async function connectToWhatsApp() {
                 );
                 await setState({ ...rawState, state: 'SELECT_DATE', anamnese: incomingText });
             }
-            return;
-        }
-
-        // ── Fluxo de Tatuagem: Detalhes e Fotos ──
-        if (currentState === 'TATTOO_DETAILS') {
-            if (incomingText === '0') { 
-                await sendMsg(getWelcomeMessage());
-                await setState({ state: 'MENU' });
-                return; 
-            }
-
-            const hasImage = !!(msg.message?.imageMessage || msg.message?.extendedTextMessage?.contextInfo?.quotedMessage?.imageMessage || msg.message?.videoMessage);
-            
-            await sendMsg(
-                `Perfeito! Recebemos seus detalhes ${hasImage ? 'e imagens ' : ''}com sucesso. ✨\n\n` +
-                `A *Dyoli* já vai analisar tudo e te chamar aqui em breve para conversarem sobre o orçamento e detalhes finais.\n\n` +
-                `*Aguarde um instante enquanto encerramos o atendimento automático...* ⏳`
-            );
-            
-            // Gerar PDF de anamnese (mesmo sem nome oficial, usamos o pushName do WhatsApp)
-            const pushName = msg.pushName || 'Cliente WhatsApp';
-            const customerPhone = userPhone;
-            
-            saveAnamnesisRecord(rawState, pushName, customerPhone, 'Não informado').catch(err => console.error('Erro ao gerar PDF de anamnese:', err));
-
-            // Transferência final para atendimento humano
-            await setState({ state: 'WAITING_HUMAN' });
             return;
         }
 
