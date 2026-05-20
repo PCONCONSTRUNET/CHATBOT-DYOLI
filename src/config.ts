@@ -39,6 +39,9 @@ export interface InstanceConfig {
     // URL pública
     publicUrl?: string;
 
+    // Desativar respostas do chatbot (funciona apenas como ponte/envio)
+    disableBot?: boolean;
+
     // Mensagens Editáveis pelo Painel
     messages?: {
         welcome?: string;
@@ -135,7 +138,8 @@ export async function loadConfigFromDb(slug: string): Promise<InstanceConfig> {
         menu: data.menu || [],
         reminder24h: data.reminder24h,
         reminder1h: data.reminder1h,
-        sessionFolder: data.session_folder || `sessions/${data.slug}`
+        sessionFolder: data.session_folder || `sessions/${data.slug}`,
+        disableBot: data.disable_bot || false
     };
 }
 
@@ -175,6 +179,7 @@ export async function loadAllInstancesFromDb(): Promise<InstanceConfig[]> {
         menu: inst.menu || [],
         reminder24h: inst.reminder24h,
         reminder1h: inst.reminder1h,
-        sessionFolder: inst.session_folder || `sessions/${inst.slug}`
+        sessionFolder: inst.session_folder || `sessions/${inst.slug}`,
+        disableBot: inst.disable_bot || false
     }));
 }

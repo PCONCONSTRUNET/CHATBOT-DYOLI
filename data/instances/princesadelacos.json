@@ -4,6 +4,7 @@
   "active": true,
   "port": 3005,
   "phoneNumber": "",
+  "disableBot": true,
   "supabaseUrl": "https://glezvjgtzplflzevclor.supabase.co",
   "supabaseKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsZXp2amd0enBsZmx6ZXZjbG9yIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODA0NjI2MywiZXhwIjoyMDkzNjIyMjYzfQ.77RjtZqnDIJ_F8Obi3qeztCa4aY8B-FlF4s5LFSiXHA",
   "supabaseFunctionsUrl": "https://glezvjgtzplflzevclor.supabase.co/functions/v1",
