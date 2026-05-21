@@ -340,7 +340,7 @@ async function connectToWhatsApp() {
         if (!msg || !msg.message || msg.key.remoteJid === 'status@broadcast') return;
 
         // Se a instância estiver configurada para não responder mensagens (apenas API / ponte)
-        if (config.disableBot || config.id === 'princesadelacos') {
+        if (config.disableBot) {
             console.log(`[🤖 ${config.id}] Bot desativado (apenas API/ponte). Mensagem recebida de ${msg.key.remoteJid} ignorada.`);
             return;
         }
