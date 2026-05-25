@@ -869,8 +869,9 @@ async function connectToWhatsApp() {
 
                 if (!horarios || horarios.length === 0) {
                     await sendMsg(
-                        `😔 Não há horários disponíveis para *${dataBR}*.\n\n` +
-                        `Digite outra data ou *0* para voltar ao menu.`
+                        `Não há horário disponível pra essa data ${dataBR}\n\n` +
+                        `*DIGITE OUTRA DATA*\n\n` +
+                        `Ou *0* pra voltar ao menu anterior`
                     );
                     return;
                 }
@@ -1055,13 +1056,13 @@ async function connectToWhatsApp() {
                 saveAnamnesisRecord(rawState, nome, userPhone, cpf).catch(err => console.error('Erro ao gerar PDF de anamnese:', err));
             }
 
-            const sinal = (valorTotal * 0.2).toFixed(2).replace('.', ',');
+            const SINAL_FIXO = 50;
             const total = valorTotal.toFixed(2).replace('.', ',');
 
             await sendMsg(
                 `Ótimo! Para confirmar sua vaga, precisamos que você realize o pagamento via PIX.\n\n` +
                 `Como você prefere pagar?\n\n` +
-                `*1.* Sinal de 20% (R$ ${sinal}) e o restante no dia.\n` +
+                `*1.* Sinal fixo de *R$ 50,00* e o restante no dia.\n` +
                 `*2.* Valor Total (R$ ${total}).\n\n` +
                 `_Digite *1* ou *2*, ou *0* para cancelar._`
             );
@@ -1085,7 +1086,7 @@ async function connectToWhatsApp() {
 
             const { servico, dataISO, dataBR, hora, nome } = rawState;
             const valorTotal = parseFloat(servico.preco || servico.price || 0);
-            const valorCobrado = incomingText === '1' ? valorTotal * 0.2 : valorTotal;
+            const valorCobrado = incomingText === '1' ? 50 : valorTotal;
 
             if (!config.mercadopagoAccessToken) {
                 await sendMsg("⚠️ Este estúdio ainda não configurou os pagamentos online. Seu agendamento será concluído com pagamento no local.");
