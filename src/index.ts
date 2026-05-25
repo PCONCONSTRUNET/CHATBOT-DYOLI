@@ -1093,18 +1093,25 @@ async function connectToWhatsApp() {
                 saveAnamnesisRecord(rawState, nome, userPhone, cpf).catch(err => console.error('Erro ao gerar PDF de anamnese:', err));
             }
 
-            const SINAL_FIXO = 50;
             const total = valorTotal.toFixed(2).replace('.', ',');
+            
+            let sinalValor = 50;
+            let sinalLabel = "Sinal fixo de *R$ 50,00*";
+            
+            if (valorTotal <= 100) {
+                sinalValor = valorTotal * 0.2;
+                sinalLabel = `Sinal de 20% (*R$ ${sinalValor.toFixed(2).replace('.', ',')}*)`;
+            }
 
             await sendMsg(
                 `Ótimo! Para confirmar sua vaga, precisamos que você realize o pagamento via PIX.\n\n` +
                 `Como você prefere pagar?\n\n` +
-                `*1.* Sinal fixo de *R$ 50,00* e o restante no dia.\n` +
+                `*1.* ${sinalLabel} e o restante no dia.\n` +
                 `*2.* Valor Total (R$ ${total}).\n\n` +
                 `_Digite *1* ou *2*, ou *0* para cancelar._`
             );
 
-            await setState({ ...rawState, state: 'SELECT_PAYMENT_TYPE', cpf });
+            await setState({ ...rawState, state: 'SELECT_PAYMENT_TYPE', cpf, sinalValor });
             return;
         }
 
@@ -1117,13 +1124,19 @@ async function connectToWhatsApp() {
             }
 
             if (incomingText !== '1' && incomingText !== '2') {
-                await sendMsg('Por favor, digite *1* para Sinal (20%) ou *2* para Valor Total.');
+                await sendMsg('Por favor, digite *1* para Sinal ou *2* para Valor Total.');
                 return;
             }
 
-            const { servico, dataISO, dataBR, hora, nome } = rawState;
+            const { servico, dataISO, dataBR, hora, nome, sinalValor } = rawState;
             const valorTotal = parseFloat(servico.preco || servico.price || 0);
-            const valorCobrado = incomingText === '1' ? 50 : valorTotal;
+            
+            let sinalCalculado = sinalValor || 50;
+            if (!rawState.sinalValor && valorTotal <= 100) {
+                sinalCalculado = valorTotal * 0.2;
+            }
+            
+            const valorCobrado = incomingText === '1' ? sinalCalculado : valorTotal;
 
             if (!config.mercadopagoAccessToken) {
                 await sendMsg("⚠️ Este estúdio ainda não configurou os pagamentos online. Seu agendamento será concluído com pagamento no local.");
