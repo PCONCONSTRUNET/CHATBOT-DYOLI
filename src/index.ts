@@ -201,6 +201,39 @@ app.post('/webhook/mercadopago', async (req: any, res: any) => {
 const processedMessages = new Set<string>();
 const typingContacts = new Set<string>();
 
+// ── TIMEOUT DE INATIVIDADE ──
+const inactivityTimers = new Map<string, NodeJS.Timeout>();
+const INACTIVITY_MS = 10 * 60 * 1000; // 10 minutos
+
+function cancelInactivityTimer(jid: string) {
+    if (inactivityTimers.has(jid)) {
+        clearTimeout(inactivityTimers.get(jid)!);
+        inactivityTimers.delete(jid);
+    }
+}
+
+function resetInactivityTimer(jid: string, sock: any) {
+    cancelInactivityTimer(jid);
+    const timer = setTimeout(async () => {
+        inactivityTimers.delete(jid);
+        try {
+            await savePersistentState(jid, { state: 'START' });
+            const msg =
+                `⏰ Sua sessão foi encerrada por inatividade.\n\n` +
+                `Quando quiser agendar ou tiver dúvidas, é só me chamar! 😊`;
+            if (sock?.sendWithTyping) {
+                await sock.sendWithTyping(jid, { text: msg });
+            } else if (sock?.sendMessage) {
+                await sock.sendMessage(jid, { text: msg });
+            }
+            console.log(`[⏰ TIMEOUT] Sessão encerrada por inatividade: ${jid}`);
+        } catch (e) {
+            console.error(`[⏰ TIMEOUT] Erro ao encerrar sessão de ${jid}:`, e);
+        }
+    }, INACTIVITY_MS);
+    inactivityTimers.set(jid, timer);
+}
+
 async function getPersistentState(remoteJid: string) {
     const { data, error } = await masterSupabase
         .from('chat_sessions')
@@ -370,6 +403,7 @@ async function connectToWhatsApp() {
         if (msg.key.fromMe) {
             const cmd = incomingText.toLowerCase();
             if (cmd === 'atendimento finalizado') {
+                cancelInactivityTimer(remoteJid); // cancela timer de inatividade do cliente
                 await savePersistentState(remoteJid, { state: 'START' });
                 await sock.sendMessage(remoteJid, { text: '🔄 *Atendimento finalizado. O bot voltará a te atender agora.*' });
                 console.log(`[🔄 ${config.id}] Bot resetado manualmente para ${remoteJid}`);
@@ -403,6 +437,9 @@ async function connectToWhatsApp() {
 
         const stateKey = remoteJid;
         let rawState = await getPersistentState(stateKey);
+
+        // Renova o timer de inatividade a cada mensagem do cliente
+        resetInactivityTimer(remoteJid, sock);
 
         const setState = async (newState: any) => {
             await savePersistentState(stateKey, newState);
