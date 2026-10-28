@@ -23,6 +23,6 @@
     "reminder24h": "Olá, *{nome}*! ⏰\n\nPassando para lembrar do seu atendimento agendado para amanhã (faltam 24h).\n\n📅 *Data:* {data}\n🕒 *Horário:* {hora}\n🧘 *Atendimento:* {servico}\n\nContamos com a sua presença! Caso precise falar conosco, basta responder esta mensagem. 🌿",
     "reminder1h": "",
     "paymentConfirmed": "Olá, *{nome}*! ✅\n\nIdentificamos o seu pagamento com sucesso!\n\n💰 *Valor Pago:* R$ {VALOR}\n\nSeu comprovante e histórico atualizado já estão disponíveis na sua Área do Cliente.\n\nMuito obrigada pela confiança! 🌟",
-    "welcome": ""
+    "welcome": "✨ *ESPAÇO CAMILA MACHADO* ✨\n\nOlá! Seja muito bem-vindo(a)! 🌿\n\nComo posso te ajudar hoje?\n\n*1.* Agendar pelo site\n*2.* Agendar por aqui (WhatsApp)\n*3.* Consultar meus agendamentos\n*4.* Falar com a clínica\n\n_Digite o número da opção desejada:_"
   }
 }

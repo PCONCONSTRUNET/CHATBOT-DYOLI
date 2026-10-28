@@ -29,6 +29,8 @@ if (!configPath) {
 let config: InstanceConfig;
 if (configPath.endsWith('.json')) {
     config = loadInstanceConfig(configPath);
+} else if (configPath === 'natan' && fs.existsSync(path.resolve('data/instances/natan.json'))) {
+    config = loadInstanceConfig(path.resolve('data/instances/natan.json'));
 } else {
     config = await loadConfigFromDb(configPath);
 }
@@ -319,12 +321,16 @@ async function connectToWhatsApp() {
             // Persiste QR no Supabase para Edge Function externa
             try {
                 const qrBase64 = await QRCode.toDataURL(qr, { scale: 12 });
-                await supabase.from('whatsapp_status').upsert({
+                const { error: qrErr } = await supabase.from('whatsapp_status').upsert({
                     id: config.id, status: 'QR_READY',
                     qr_code: qr, qr_data: qrBase64,
                     updated_at: new Date().toISOString()
                 }, { onConflict: 'id' });
-            } catch (_e) {}
+                if (qrErr) console.error('[QR-ERR ' + config.id + '] ' + qrErr.message);
+                else console.log('[QR-SYNC ' + config.id + '] QR salvo em ' + config.supabaseUrl);
+            } catch (qrEx: any) {
+                console.error('[QR-ERR ' + config.id + '] ' + qrEx?.message);
+            }
         }
 
         if (connection === 'close') {
