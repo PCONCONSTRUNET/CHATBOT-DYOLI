@@ -1,4 +1,4 @@
-﻿import 'dotenv/config';
+import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 import makeWASocket, { DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, Browsers } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
@@ -1774,7 +1774,7 @@ setInterval(async () => {
                     await globalSock.sendMessage(jid, { text: msg.mensagem });
                 }
                 await supabase.from('whatsapp_queue').update({ status: 'sent', processed_at: new Date().toISOString() }).eq('id', msg.id);
-                console.log(`[SENT ${config.id}] Fila enviada para ${msg.numero}`);
+                console.log('[SENT ' + config.id + '] Fila enviada para ' + msg.numero);
             } catch (e: any) {
                 await supabase.from('whatsapp_queue').update({ status: 'error' }).eq('id', msg.id);
                 console.error(`[ERR ${config.id}] Erro fila:`, e?.message);
