@@ -10,18 +10,18 @@
   "botApiSecret": "sk_natan_a7f2c9d4e8b1653f90dc42ea7b38",
   "webhookSecret": "natan_secret_123",
   "reminder24h": true,
-  "reminder1h": true,
+  "reminder1h": false,
   "welcomeExtra": "",
   "websiteUrl": "",
   "misticClientId": "",
   "misticClientSecret": "",
   "mercadopagoAccessToken": "",
   "messages": {
-    "welcome": "",
-    "appointmentConfirmed": "",
-    "appointmentCancelled": "",
-    "reminder24h": "",
+    "appointmentConfirmed": "Olá, *{nome}*! 🌟\n\nSua sessão foi agendada com sucesso no espaço *{empresa}*.\n\n📅 *Data:* {data}\n🕒 *Horário:* {hora}\n🧘 *Atendimento:* {servico}\n\nQualquer dúvida estamos à disposição. Até breve! 🌿",
+    "appointmentCancelled": "Olá, *{nome}*.\n\nInformamos que o seu agendamento de *{servico}* previsto para o dia *{data}* às *{hora}* foi cancelado.\n\nCaso deseje escolher uma nova data e horário, acesse sua Área do Cliente ou entre em contato conosco por aqui. ♡",
+    "reminder24h": "Olá, *{nome}*! ⏰\n\nPassando para lembrar do seu atendimento agendado para amanhã (faltam 24h).\n\n📅 *Data:* {data}\n🕒 *Horário:* {hora}\n🧘 *Atendimento:* {servico}\n\nContamos com a sua presença! Caso precise falar conosco, basta responder esta mensagem. 🌿",
     "reminder1h": "",
-    "paymentConfirmed": ""
+    "paymentConfirmed": "Olá, *{nome}*! ✅\n\nIdentificamos o seu pagamento com sucesso!\n\n💰 *Valor Pago:* R$ {VALOR}\n\nSeu comprovante e histórico atualizado já estão disponíveis na sua Área do Cliente.\n\nMuito obrigada pela confiança! 🌟",
+    "welcome": ""
   }
 }
