@@ -11,6 +11,7 @@
   "webhookSecret": "natan_secret_123",
   "reminder24h": true,
   "reminder1h": false,
+  "reminderSchema": "client_join",
   "welcomeExtra": "",
   "websiteUrl": "",
   "misticClientId": "",
