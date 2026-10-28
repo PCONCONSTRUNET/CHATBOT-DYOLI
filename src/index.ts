@@ -1,4 +1,4 @@
-import 'dotenv/config';
+﻿import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 import makeWASocket, { DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, Browsers } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
@@ -316,6 +316,15 @@ async function connectToWhatsApp() {
             latestQR = qr;
             console.log(`[📱 ${config.id}] Novo QR Code gerado.`);
             qrcode.generate(qr, { small: true });
+            // Persiste QR no Supabase para Edge Function externa
+            try {
+                const qrBase64 = await QRCode.toDataURL(qr, { scale: 12 });
+                await supabase.from('whatsapp_status').upsert({
+                    id: config.id, status: 'QR_READY',
+                    qr_code: qr, qr_data: qrBase64,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'id' });
+            } catch (_e) {}
         }
 
         if (connection === 'close') {
@@ -359,6 +368,14 @@ async function connectToWhatsApp() {
             } catch (e) {
                 console.error(`[⚠️ ${config.id}] Falha ao atualizar timestamp no banco master`);
             }
+            // Atualiza status de conexão no Supabase
+            try {
+                await supabase.from('whatsapp_status').upsert({
+                    id: config.id, status: 'CONNECTED',
+                    qr_code: null, qr_data: null,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'id' });
+            } catch (_e) {}
         }
     });
 
@@ -1740,4 +1757,29 @@ app.post('/api/logout', async (req, res) => {
 });
 
 app.listen(config.port, () => { console.log(`[🌐 ${config.id}] Porta ${config.port}`); });
+
+// Fila de mensagens via Supabase (para integração sem necessidade de porta exposta)
+setInterval(async () => {
+    if (!globalSock?.user) return;
+    try {
+        const { data: msgs } = await supabase.from('whatsapp_queue')
+            .select('*').eq('instance_id', config.id).eq('status', 'pending')
+            .order('created_at', { ascending: true }).limit(5);
+        for (const msg of msgs || []) {
+            try {
+                const jid = await resolveJid(globalSock, msg.numero);
+                if ((globalSock as any).sendWithTyping) {
+                    await (globalSock as any).sendWithTyping(jid, { text: msg.mensagem });
+                } else {
+                    await globalSock.sendMessage(jid, { text: msg.mensagem });
+                }
+                await supabase.from('whatsapp_queue').update({ status: 'sent', processed_at: new Date().toISOString() }).eq('id', msg.id);
+                console.log([📤 \] Fila enviada para \);
+            } catch (e: any) {
+                await supabase.from('whatsapp_queue').update({ status: 'error' }).eq('id', msg.id);
+                console.error([❌ \] Erro fila:, e?.message);
+            }
+        }
+    } catch (_e) {}
+}, 5000);
 connectToWhatsApp();
