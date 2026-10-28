@@ -1774,10 +1774,10 @@ setInterval(async () => {
                     await globalSock.sendMessage(jid, { text: msg.mensagem });
                 }
                 await supabase.from('whatsapp_queue').update({ status: 'sent', processed_at: new Date().toISOString() }).eq('id', msg.id);
-                console.log([📤 \] Fila enviada para \);
+                console.log(`[SENT ${config.id}] Fila enviada para ${msg.numero}`);
             } catch (e: any) {
                 await supabase.from('whatsapp_queue').update({ status: 'error' }).eq('id', msg.id);
-                console.error([❌ \] Erro fila:, e?.message);
+                console.error(`[ERR ${config.id}] Erro fila:`, e?.message);
             }
         }
     } catch (_e) {}
