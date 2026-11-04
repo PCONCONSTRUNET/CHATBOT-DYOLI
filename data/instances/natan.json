@@ -2,6 +2,7 @@
   "id": "natan",
   "name": "Camila",
   "active": true,
+  "disableBot": true,
   "port": 3002,
   "phoneNumber": "",
   "supabaseUrl": "https://phhsdjeduxahoeridpec.supabase.co",
